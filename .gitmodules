@@ -1,0 +1,3 @@
+[submodule "ambient-provider"]
+	path = ambient-provider
+	url = git@github.com:NVIDIA-AI-Blueprints/ambient-provider.git
