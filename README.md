@@ -99,6 +99,7 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 
 **NVIDIA API Catalog Configuration:** No GPU requirement when using public NVIDIA endpoints for NIM microservices (build.nvidia.com)
 
+
 #### **Ambient Patient Agent**
 
 **Self-Hosted Configuration:**
