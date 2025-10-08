@@ -54,7 +54,6 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 - **Intelligent Guardrails**
   - NeMo Guardrails for safe and topically appropriate interactions
   - Context-aware response generation
-  - Multi-language support
 
 ---
 
@@ -71,7 +70,6 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 
 ### **Additional Software**
 - **LangChain** & **Langgraph** - Framework for Agentic LLM applications
-- **Tavily** - Web search and information retrieval
 
 ---
 
@@ -86,7 +84,7 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 - **Docker Version 28.1+ with Docker Compose plugin**
 
 #### **Storage**
-- **Ambient Patient Agent:** 300 GB (for self-hosted configuration)
+- **Ambient Patient Agent:** 302 GB (for self-hosted configuration)
 - **Ambient Provider Agent:** 325 GB (for self-hosted configuration)
 
 ### **Hardware Requirements**
@@ -97,7 +95,7 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 | Service | Use Case | Recommended GPU |
 |---------|----------|-----------------|
 | Riva ASR Microservice | Audio Transcription and Diarization | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
-| Reasoning Model | Medical Note (SOAP) Generation | 2x H100 80 GB<br>*or* 4x A100 80 GB |
+| [Reasoning Model](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-nemotron-super-49b-v1-5) | Medical Note (SOAP) Generation | 2x H100 80 GB<br>*or* 4x A100 80 GB |
 
 **NVIDIA API Catalog Configuration:** No GPU requirement when using public NVIDIA endpoints for NIM microservices (build.nvidia.com)
 
@@ -110,7 +108,7 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 | Riva TTS Microservice | Text-to-Speech Generation | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
 [NemoGuard Content Safety Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard) (Optional for Enabling NeMo Guardrails) | `nvidia/llama-3_1-nemoguard-8b-content-safety` | 1x options including A100, H100, L40S, A6000
 [NemoGuard Topic Control Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard) (Optional for Enabling NeMo Guardrails) | `nvidia/llama-3_1-nemoguard-8b-topic-control` | 1x options including A100, H100, L40S, A6000
-| Instruct Model | Agent Reasoning and Tool Calling | 2x H100 80 GB<br>*or* 4x A100 80GB |
+| [Instruct Model](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-70b-instruct) | Agent Reasoning and Tool Calling | 2x H100 80 GB<br>*or* 4x A100 80GB |
 
 **NVIDIA API Catalog Configuration:** No GPU requirement when using public NVIDIA endpoints for NIM microservices (build.nvidia.com)
 
@@ -119,8 +117,8 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 ## Deployment Options
 
 - **Docker Compose** - Containerized deployment
-- **NVIDIA API Catalog Endpoints** - Using NVIDIA's hosted services [build.nvidia.com](https://build.nvidia.com).
-- **Self-Hosted** - Local GPU deployment
+   - **NVIDIA API Catalog Endpoints** - Using NVIDIA's hosted services [build.nvidia.com](https://build.nvidia.com).
+   - **Self-Hosted** - Local GPU deployment
 
 ### **Quickstart**
 For a quickstart, refer to the [ambient-provider](./ambient-provider/ambient-provider.ipynb) and [ambient-patient](./ambient-patient/ambient-patient.ipynb) Python notebooks, which demonstrate setup and usage.
