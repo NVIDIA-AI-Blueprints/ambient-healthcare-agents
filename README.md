@@ -105,7 +105,7 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 |---------|----------|-----------------|
 | Riva ASR Microservice | Speech-to-Text Transcription | 1 x L40S |
 | Riva TTS Microservice | Text-to-Speech Generation | 1 x L40S |
-| Instruct Model | Agent Reasoning and Tool Calling | 2 x H100 80 GB<br>*or* 6 x A100 80GB |
+| Instruct Model | Agent Reasoning and Tool Calling | 2 x H100 80 GB<br>*or* 4 x A100 80GB |
 
 **Cloud Configuration:** No GPU requirement when using public NVIDIA endpoints (build.nvidia.com)
 
