@@ -138,6 +138,14 @@ For a quickstart, refer to the [ambient-provider](https://github.com/NVIDIA-AI-B
 
 For a streamlined cloud deployment experience, you can deploy the Ambient Healthcare Agents developer example on NVIDIA Brev using a preconfigured GPU Environment Template (Launchable) [here](http://brev.nvidia.com).
 
+### Why Choose NVIDIA Brev?
+
+- **One-Click Deployment**: Pre-configured GPU environments with automatic setup
+- **Managed Infrastructure**: No need to manage servers or GPU clusters
+- **Secure Access**: Built-in secure tunneling for web interface access  
+- **Flexible Resources**: Choose from H100, A100, and other GPU configurations
+- **Cost-Effective**: Pay only for actual usage time
+
 ---
 
 ## Ethical Considerations
