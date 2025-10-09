@@ -54,6 +54,7 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 - **Intelligent Guardrails**
   - NeMo Guardrails for safe and topically appropriate interactions
   - Context-aware response generation
+  - Highly customizable configuration with options for guardrail-specific NIMs
 
 ---
 
@@ -122,7 +123,14 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
    - **Self-Hosted** - Local GPU deployment
 
 ### **Quickstart**
-For a quickstart, refer to the [ambient-provider](./ambient-provider/ambient-provider.ipynb) and [ambient-patient](./ambient-patient/ambient-patient.ipynb) Python notebooks, which demonstrate setup and usage.
+
+Ensure that the underlying repositories ```ambient-provider``` and ```ambient-patient``` are cloned.
+
+```bash
+git submodule update --init --recursive
+```
+
+For a quickstart, refer to the [ambient-provider](https://github.com/NVIDIA-AI-Blueprints/ambient-provider/tree/main#quick-start) and/or [ambient-patient](https://github.com/NVIDIA-AI-Blueprints/ambient-patient/tree/main#getting-started) Python notebooks, which demonstrate setup and usage.
 
 ---
 
