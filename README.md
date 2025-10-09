@@ -98,7 +98,8 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 | Riva ASR Microservice | Audio Transcription and Diarization | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
 | [Reasoning Model](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-nemotron-super-49b-v1-5) | Medical Note (SOAP) Generation | 2x H100 80 GB<br>*or* 4x A100 80 GB |
 
-**NVIDIA API Catalog Configuration:** No GPU requirement when using public NVIDIA endpoints for NIM microservices (build.nvidia.com)
+**NVIDIA API Catalog Configuration:** 
+<br>No GPU requirement when using public NVIDIA endpoints for NIM microservices (build.nvidia.com)
 
 
 #### **Ambient Patient Agent**
@@ -112,7 +113,8 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 [NemoGuard Topic Control Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard) (Optional for Enabling NeMo Guardrails) | `nvidia/llama-3_1-nemoguard-8b-topic-control` | 1x options including A100, H100, L40S, A6000
 | [Instruct Model](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-70b-instruct) | Agent Reasoning and Tool Calling | 2x H100 80 GB<br>*or* 4x A100 80GB |
 
-**NVIDIA API Catalog Configuration:** No GPU requirement when using public NVIDIA endpoints for NIM microservices (build.nvidia.com)
+**NVIDIA API Catalog Configuration:** 
+<br>No GPU requirement when using public NVIDIA endpoints for NIM microservices (build.nvidia.com)
 
 ---
 
