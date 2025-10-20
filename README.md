@@ -2,9 +2,8 @@
 
 **Build advanced AI agents for providers and patients using this developer example powered by NeMo Microservices, NVIDIA Nemotron, Riva ASR and TTS, and NVIDIA LLM NIM**
 
-> ⚠️ **Third-Party Software Notice**  
-> This developer example will download and install additional third-party open source software projects.  
-> Please review the license terms of these open source projects before use.
+---
+Note: If running the NVIDIA Brev [Launchable](http://brev.nvidia.com), refer to [ambient-provider](https://github.com/NVIDIA-AI-Blueprints/ambient-provider/tree/main#quick-start) and/or [ambient-patient](https://github.com/NVIDIA-AI-Blueprints/ambient-patient/tree/main#getting-started), which demonstrate setup and usage.
 
 ---
 
@@ -96,7 +95,7 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 | Service | Use Case | Recommended GPU |
 |---------|----------|-----------------|
 | Riva ASR Microservice | Audio Transcription and Diarization | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
-| [Reasoning Model](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-nemotron-super-49b-v1-5) | Medical Note (SOAP) Generation | 2x H100 80 GB<br>*or* 4x A100 80 GB |
+| [Reasoning Model](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-nemotron-super-49b-v1) | Medical Note (SOAP) Generation | 2x H100 80 GB<br>*or* 4x A100 80 GB |
 
 **NVIDIA API Catalog Configuration:** 
 <br>No GPU requirement when using public NVIDIA endpoints for NIM microservices (build.nvidia.com)
@@ -132,13 +131,13 @@ Ensure that the underlying repositories ```ambient-provider``` and ```ambient-pa
 git submodule update --init --recursive
 ```
 
-For a quickstart, refer to the [ambient-provider](https://github.com/NVIDIA-AI-Blueprints/ambient-provider/tree/main#quick-start) and/or [ambient-patient](https://github.com/NVIDIA-AI-Blueprints/ambient-patient/tree/main#getting-started) Python notebooks, which demonstrate setup and usage.
+For a quickstart, refer to [ambient-provider](https://github.com/NVIDIA-AI-Blueprints/ambient-provider/tree/main#quick-start) and/or [ambient-patient](https://github.com/NVIDIA-AI-Blueprints/ambient-patient/tree/main#getting-started), which demonstrate setup and usage.
 
 ---
 
 ## Deploying on NVIDIA Brev
 
-For a streamlined cloud deployment experience, you can deploy the Ambient Healthcare Agents developer example on NVIDIA Brev using a preconfigured GPU Environment Template (Launchable) [here](http://brev.nvidia.com).
+For a streamlined cloud deployment experience, you can deploy the Ambient Healthcare Agents developer example on NVIDIA Brev using a preconfigured GPU Environment Template (Launchable) [here](http://brev.nvidia.com). While this launchable allows for deploying both ambient provider and ambient patient healthcare agents, please run one notebook at a time.
 
 ### Why Choose NVIDIA Brev?
 
@@ -157,6 +156,21 @@ NVIDIA believes Trustworthy AI is a shared responsibility, and we have establish
 For more detailed information on ethical considerations for the models, please see the Model Card++ Explainability, Bias, Safety & Security, and Privacy Subcards. 
 
 **Report Issues:** Please report security vulnerabilities or NVIDIA AI Concerns [here](https://www.nvidia.com/en-us/support/submit-security-vulnerability/).
+
+---
+
+## Security Considerations
+
+Please be aware of the following security considerations when using this repository:
+
+- **Credential Management:** Never hard-code sensitive credentials (API keys, passwords, etc.) in code or configuration files. Use environment variables or a secrets manager.
+- **NGC API Key:** The application requires and processes an NVIDIA NGC API key. Treat your key as sensitive; do not expose it publicly or commit it to source control.
+- **Network Exposure:** By default, several services run locally and may expose network ports. Restrict access with firewalls or Docker network settings as appropriate for your environment.
+- **User Data Protection:** Uploaded audio files and generated medical notes may contain personally identifiable information (PII) or protected health information (PHI). Ensure secure storage and proper data handling in accordance with applicable regulations (e.g., HIPAA, GDPR).
+- **Dependencies:** Review all dependencies and container images for known vulnerabilities. Keep your dependencies up to date.
+- **Container Security:** Do not run containers with unnecessary privileges. Use the least privilege principle.
+- **Vulnerability Reporting:** If you discover any security issues or vulnerabilities in this repository, please follow the reporting instructions in the [SECURITY.md](./SECURITY.md) file.
+
 
 ---
 
