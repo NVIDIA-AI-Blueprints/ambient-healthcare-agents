@@ -3,7 +3,7 @@
 **Build advanced AI agents for providers and patients using this developer example powered by NeMo Microservices, NVIDIA Nemotron, Riva ASR and TTS, and NVIDIA LLM NIM**
 
 ---
-Note: If running the NVIDIA Brev [Launchable](http://brev.nvidia.com), refer to [ambient-provider](https://github.com/NVIDIA-AI-Blueprints/ambient-provider/tree/main#quick-start) and/or [ambient-patient](https://github.com/NVIDIA-AI-Blueprints/ambient-patient/tree/main#getting-started), which demonstrate setup and usage.
+Note: If running the NVIDIA Brev [Launchable](http://brev.nvidia.com), refer to [ambient-provider](./ambient-provider.ipynb) and/or [ambient-patient](./ambient-patient.ipynb), which demonstrate setup and usage.
 
 ---
 
@@ -106,11 +106,11 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 **Self-Hosted Configuration:**
 | Service | Use Case | Recommended GPU |
 |---------|----------|-----------------|
-| Riva ASR Microservice | Speech-to-Text Transcription | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
-| Riva TTS Microservice | Text-to-Speech Generation | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
-[NemoGuard Content Safety Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard) (Optional for Enabling NeMo Guardrails) | `nvidia/llama-3_1-nemoguard-8b-content-safety` | 1x options including A100, H100, L40S, A6000
-[NemoGuard Topic Control Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard) (Optional for Enabling NeMo Guardrails) | `nvidia/llama-3_1-nemoguard-8b-topic-control` | 1x options including A100, H100, L40S, A6000
-| [Instruct Model](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-70b-instruct) | Agent Reasoning and Tool Calling | 2x H100 80 GB<br>*or* 4x A100 80GB |
+| [Riva ASR Microservice](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard) | Speech-to-Text Transcription | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
+| [Riva TTS Microservice](https://build.nvidia.com/nvidia/magpie-tts-multilingual/modelcard) | Text-to-Speech Generation | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/magpie-tts-multilingual/modelcard)) |
+[NemoGuard Content Safety Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard) (Optional for Enabling NeMo Guardrails) | `nvidia/llama-3_1-nemoguard-8b-content-safety` | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard))
+[NemoGuard Topic Control Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard) (Optional for Enabling NeMo Guardrails) | `nvidia/llama-3_1-nemoguard-8b-topic-control` | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard))
+| [Instruct Model](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-70b-instruct) | Agent Reasoning and Tool Calling | 2x H100 80 GB<br>*or* 4x A100 80GB (see [modelcard](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-70b-instruct)) |
 
 **NVIDIA API Catalog Configuration:** 
 <br>No GPU requirement when using public NVIDIA endpoints for NIM microservices (build.nvidia.com)
@@ -128,7 +128,7 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 Ensure that the underlying repositories ```ambient-provider``` and ```ambient-patient``` are cloned.
 
 ```bash
-git submodule update --init --recursive
+git submodule update --init --recursive --remote
 ```
 
 For a quickstart, refer to [ambient-provider](https://github.com/NVIDIA-AI-Blueprints/ambient-provider/tree/main#quick-start) and/or [ambient-patient](https://github.com/NVIDIA-AI-Blueprints/ambient-patient/tree/main#getting-started), which demonstrate setup and usage.
@@ -163,13 +163,23 @@ For more detailed information on ethical considerations for the models, please s
 
 Please be aware of the following security considerations when using this repository:
 
-- **Credential Management:** Never hard-code sensitive credentials (API keys, passwords, etc.) in code or configuration files. Use environment variables or a secrets manager.
-- **NGC API Key:** The application requires and processes an NVIDIA NGC API key. Treat your key as sensitive; do not expose it publicly or commit it to source control.
-- **Network Exposure:** By default, several services run locally and may expose network ports. Restrict access with firewalls or Docker network settings as appropriate for your environment.
-- **User Data Protection:** Uploaded audio files and generated medical notes may contain personally identifiable information (PII) or protected health information (PHI). Ensure secure storage and proper data handling in accordance with applicable regulations (e.g., HIPAA, GDPR).
-- **Dependencies:** Review all dependencies and container images for known vulnerabilities. Keep your dependencies up to date.
-- **Container Security:** Do not run containers with unnecessary privileges. Use the least privilege principle.
-- **Vulnerability Reporting:** If you discover any security issues or vulnerabilities in this repository, please follow the reporting instructions in the [SECURITY.md](./SECURITY.md) file.
+- This repository and its contents is shared as a reference and is provided "as is". The security in the production environment is the responsibility of the end users deploying it. When deploying in a production environment, please have security experts review any potential risks and threats; define the trust boundaries, implement logging and monitoring capabilities, secure the communication channels, integrate AuthN & AuthZ with appropriate access controls, keep the deployment up to date, ensure the containers/source code are secure and free of known vulnerabilities.
+- A frontend that handles AuthN & AuthZ should be in place as missing AuthN & AuthZ could provide ungated access to customer models if directly exposed to e.g. the internet, resulting in either cost to the customer, resource exhaustion, or denial of service.
+- The repository doesn't require any privileged access to the system.
+- The end users are responsible for ensuring the availability of their deployment.
+- The end users are responsible for building the container images and keeping them up to date.
+- The end users are responsible for ensuring that OSS packages used by the developer example are current.
+- The logs from the agent backend and UI frontend containers are printed to standard out. They can include input prompts and output completions for development purposes. The end users are advised to handle logging securely and avoid information leakage for production use cases.
+- The agent backend and UI frontend containers may interact with local files for development purposes. The end users are advised to customize all file saving and uploading logic securely and avoid information leakage for production use cases.
+- Credential Management: Never hard-code sensitive credentials (API keys, passwords, etc.) in code or configuration files. Use environment variables or a secrets manager.
+- NGC API Key: The developer examples require and process an NVIDIA NGC API key. Treat your key as sensitive; do not expose it publicly or commit it to source control.
+- Network Exposure: By default, several services run locally and may expose network ports. Restrict access with firewalls or Docker network settings as appropriate for your environment.
+- User Data Protection: Uploaded audio files and generated medical notes may contain personally identifiable information (PII) or protected health information (PHI). Ensure secure storage and proper data handling in accordance with applicable regulations (e.g., HIPAA, GDPR).
+- Dependencies: Review all dependencies and container images for known vulnerabilities. Keep your dependencies up to date.
+- Container Security: Do not run containers with unnecessary privileges. Use the least privilege principle.
+- Vulnerability Reporting: If you discover any security issues or vulnerabilities in this repository, please follow the reporting instructions in the [SECURITY.md](./SECURITY.md) file.
+
+For more information, see the [SECURITY.md](./SECURITY.md) file in this repository.
 
 
 ---
