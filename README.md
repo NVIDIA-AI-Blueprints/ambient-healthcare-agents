@@ -3,8 +3,7 @@
 **Build advanced AI agents for providers and patients using this developer example powered by NeMo Microservices, NVIDIA Nemotron, Riva ASR and TTS, and NVIDIA LLM NIM**
 
 ---
-Note: If running the NVIDIA Brev [Launchable](http://brev.nvidia.com), refer to [ambient-provider](./ambient-provider.ipynb) and/or [ambient-patient](./ambient-patient.ipynb), which demonstrate setup and usage.
-
+> Note: If running the NVIDIA Brev [Launchable](http://brev.nvidia.com), refer to [ambient-provider](./ambient-provider.ipynb) and/or [ambient-patient](./ambient-patient.ipynb) Jupyter Notebooks, which demonstrate setup and usage.
 ---
 
 ## Overview
@@ -94,7 +93,7 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 **Self-Hosted Configuration:**
 | Service | Use Case | Recommended GPU |
 |---------|----------|-----------------|
-| Riva ASR Microservice | Audio Transcription and Diarization | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
+| [Riva ASR Microservice](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard) | Audio Transcription and Diarization | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
 | [Reasoning Model](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-nemotron-super-49b-v1) | Medical Note (SOAP) Generation | 2x H100 80 GB<br>*or* 4x A100 80 GB |
 
 **NVIDIA API Catalog Configuration:** 
@@ -110,7 +109,7 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 | [Riva TTS Microservice](https://build.nvidia.com/nvidia/magpie-tts-multilingual/modelcard) | Text-to-Speech Generation | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/magpie-tts-multilingual/modelcard)) |
 [NemoGuard Content Safety Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard) (Optional for Enabling NeMo Guardrails) | `nvidia/llama-3_1-nemoguard-8b-content-safety` | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard))
 [NemoGuard Topic Control Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard) (Optional for Enabling NeMo Guardrails) | `nvidia/llama-3_1-nemoguard-8b-topic-control` | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard))
-| [Instruct Model](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-70b-instruct) | Agent Reasoning and Tool Calling | 2x H100 80 GB<br>*or* 4x A100 80GB (see [modelcard](https://docs.nvidia.com/nim/large-language-models/latest/supported-models.html#llama-33-70b-instruct)) |
+| [Instruct Model](https://build.nvidia.com/meta/llama-3_3-70b-instruct/modelcard) | Agent Reasoning and Tool Calling | 2x H100 80 GB<br>*or* 4x A100 80GB (see [modelcard](https://build.nvidia.com/meta/llama-3_3-70b-instruct/modelcard)) |
 
 **NVIDIA API Catalog Configuration:** 
 <br>No GPU requirement when using public NVIDIA endpoints for NIM microservices (build.nvidia.com)
