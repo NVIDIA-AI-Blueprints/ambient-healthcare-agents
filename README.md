@@ -183,16 +183,11 @@ For more information, see the [SECURITY.md](./SECURITY.md) file in this reposito
 
 ---
 
-## License and Terms of Use
+## License and Governing Terms
 
-### **License**
-Use of the models in this developer example is governed by the **NVIDIA AI Foundation Models Community License**.
+GOVERNING TERMS: The API trial service is governed by the [NVIDIA API Trial Terms of Service](https://assets.ngc.nvidia.com/products/api-catalog/legal/NVIDIA%20API%20Trial%20Terms%20of%20Service.pdf). The developer example software is governed by the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0). Use of the NIM containers is governed by the [NVIDIA Software License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-software-license-agreement) and [Product Specific Terms for NVIDIA AI Products](https://www.nvidia.com/en-us/agreements/enterprise-software/product-specific-terms-for-ai-products). Use of the ASR Parakeet 1.1b CTC en-US, ASR Parakeet CTC Riva 1.1b, Magpie TTS Multilingual, and Llama-3.3-70b-Instruct models is governed by the [NVIDIA Community Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-community-models-license/). Use of the Llama-3.1-Nemoguard-8b-Topic-Control, Llama-3.1-Nemoguard-8b-Content-Safety and Llama-3.3-Nemotron-Super-49B-v1 models is governed by the [NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/). Use of the Ace-Controller software is governed by the [BSD 2-Clause License](https://github.com/NVIDIA/ace-controller/blob/develop-health/LICENSE). ADDITIONAL INFORMATION: For Llama-3.1-Nemoguard-8b-Topic-Control and Llama-3.1-Nemoguard-8b-Content-Safety, [Llama 3.1 Community License Agreement](https://www.llama.com/llama3_1/license/). For Llama-3.3-Nemotron-Super-49b-v1 and Llama-3.3-70b-Instruct, [Llama 3.3 Community License Agreement](https://www.llama.com/llama3_3/license/). Built with Llama.
 
-### **Governing Terms**
-- **NVIDIA Ambient Healthcare Agents Developer Example:** Apache 2.0 License
-- **Software and Materials:** NVIDIA Software License Agreement and Product-Specific Terms for NVIDIA AI Products
-- **Models (except Llama-3.3-Nemotron-Super-49B-v1.5):** NVIDIA Community Model License
-- **Llama-3.3-Nemotron-Super-49B-v1.5 Model:** NVIDIA Open Model License Agreement
-- **Llama-3.3-70b-Instruct Model:** Llama 3.3 Community License Agreement
+
+
 
 ---
