@@ -3,7 +3,7 @@
 **Build advanced AI agents for providers and patients using this developer example powered by NeMo Microservices, NVIDIA Nemotron, Riva ASR and TTS, and NVIDIA LLM NIM**
 
 ---
-> Note: If running the NVIDIA Brev [Launchable](http://brev.nvidia.com), refer to [ambient-provider.ipynb](./ambient-provider.ipynb) and/or [ambient-patient.ipynb](./ambient-patient.ipynb) Jupyter Notebooks, which demonstrate setup and usage.
+> Note: If running the NVIDIA Brev [Launchable](https://brev.nvidia.com/launchable/deploy/now?launchableID=env-34f0WpRwoDMj851ced7kGEoovxH), refer to [ambient-provider.ipynb](./ambient-provider.ipynb) and/or [ambient-patient.ipynb](./ambient-patient.ipynb) Jupyter Notebooks, which demonstrate setup and usage.
 ---
 
 ## Overview
@@ -105,10 +105,10 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 **Self-Hosted Configuration:**
 | Service | Use Case | Recommended GPU |
 |---------|----------|-----------------|
-| [Riva ASR NIM](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard) | Speech-to-Text Transcription | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
-| [Riva TTS NIM](https://build.nvidia.com/nvidia/magpie-tts-multilingual/modelcard) | Text-to-Speech Generation | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/magpie-tts-multilingual/modelcard)) |
-[NemoGuard Content Safety Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard) (Optional for Enabling NeMo Guardrails) | `nvidia/llama-3_1-nemoguard-8b-content-safety` | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard))
-[NemoGuard Topic Control Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard) (Optional for Enabling NeMo Guardrails) | `nvidia/llama-3_1-nemoguard-8b-topic-control` | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard))
+| [Riva ASR NIM](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard) | Audio Transcription | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
+| [Riva TTS NIM](https://build.nvidia.com/nvidia/magpie-tts-multilingual/modelcard) | Speech Synthesis | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/magpie-tts-multilingual/modelcard)) |
+[NemoGuard Content Safety Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard) (Optional for Enabling NeMo Guardrails) | Content Safety | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard))
+[NemoGuard Topic Control Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard) (Optional for Enabling NeMo Guardrails) | Topic Control | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard))
 | [Instruct Model](https://build.nvidia.com/meta/llama-3_3-70b-instruct/modelcard) | Agent Reasoning and Tool Calling | 2x H100 80 GB<br>*or* 4x A100 80GB (see [modelcard](https://build.nvidia.com/meta/llama-3_3-70b-instruct/modelcard)) |
 
 **NVIDIA API Catalog Configuration:** 
@@ -136,7 +136,7 @@ For a quickstart, refer to [ambient-provider](https://github.com/NVIDIA-AI-Bluep
 
 ## Deploying on NVIDIA Brev
 
-For a streamlined cloud deployment experience, you can deploy the Ambient Healthcare Agents developer example on NVIDIA Brev using a preconfigured GPU Environment Template (Launchable) [here](http://brev.nvidia.com). While this launchable allows for deploying both ambient provider and ambient patient healthcare agents, please run one notebook at a time.
+For a streamlined cloud deployment experience, you can deploy the Ambient Healthcare Agents developer example on NVIDIA Brev using a preconfigured GPU Environment Template (Launchable) [here](https://brev.nvidia.com/launchable/deploy/now?launchableID=env-34f0WpRwoDMj851ced7kGEoovxH). While this launchable allows for deploying both ambient provider and ambient patient healthcare agents, please run one notebook at a time.
 
 ### Why Choose NVIDIA Brev?
 
