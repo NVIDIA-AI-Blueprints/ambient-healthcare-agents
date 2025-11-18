@@ -49,11 +49,13 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           DEPLOYMENT_OPTION: ${{ github.event.inputs.deployment_option || '1' }}
         run: |
+          echo "::group::Notebook Execution Logs (${{ matrix.notebook.name }})"
           papermill \
             ${{ matrix.notebook.path }} \
             .github/workflows/${{ matrix.notebook.name }}-executed.ipynb \
             --log-output \
             --request-save-on-cell-execute
+          echo "::endgroup::"
     
       - name: Convert executed notebook to HTML
         run: |
