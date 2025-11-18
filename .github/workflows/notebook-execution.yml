@@ -1,0 +1,201 @@
+name: Notebook Execution and HTML Generation
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  execute-notebooks:
+    name: Execute Notebooks
+    runs-on: arc-runner-set-oke-org-poc-1-gpu
+    strategy:
+      fail-fast: false
+      matrix:
+        notebook:
+          - name: ambient-patient
+            path: ambient-patient.ipynb
+          - name: ambient-provider
+            path: ambient-provider.ipynb
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+    
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+    
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install papermill jupyter nbconvert
+    
+      - name: Preprocess notebook
+        run: |
+          python .github/scripts/preprocess_notebook.py \
+            ${{ matrix.notebook.path }} \
+            .github/workflows/${{ matrix.notebook.name }}-processed.ipynb
+    
+      - name: Execute notebook with papermill
+        env:
+          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          papermill \
+            .github/workflows/${{ matrix.notebook.name }}-processed.ipynb \
+            .github/workflows/${{ matrix.notebook.name }}-executed.ipynb \
+            -p NGC_API_KEY "${{ secrets.NGC_API_KEY }}" \
+            -p NVIDIA_API_KEY "${{ secrets.NVIDIA_API_KEY }}" \
+            --log-output \
+            --request-save-on-cell-execute || true
+        continue-on-error: true
+    
+      - name: Convert executed notebook to HTML
+        if: always()
+        run: |
+          jupyter nbconvert \
+            --to html \
+            --output ${{ matrix.notebook.name }}.html \
+            --output-dir .github/workflows \
+            .github/workflows/${{ matrix.notebook.name }}-executed.ipynb || \
+          echo "HTML conversion failed or notebook execution failed"
+        continue-on-error: true
+    
+      - name: Upload HTML artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.notebook.name }}-html
+          path: .github/workflows/${{ matrix.notebook.name }}.html
+          retention-days: 30
+          if-no-files-found: ignore
+    
+      - name: Upload executed notebook artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.notebook.name }}-executed
+          path: .github/workflows/${{ matrix.notebook.name }}-executed.ipynb
+          retention-days: 30
+          if-no-files-found: ignore
+    
+      - name: Set execution status
+        if: always()
+        id: set_status
+        run: |
+          if [ -f ".github/workflows/${{ matrix.notebook.name }}-executed.ipynb" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "html_path=.github/workflows/${{ matrix.notebook.name }}.html" >> $GITHUB_OUTPUT
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "html_path=" >> $GITHUB_OUTPUT
+          fi
+    
+      - name: Cleanup temporary files
+        if: always()
+        run: |
+          rm -f .github/workflows/${{ matrix.notebook.name }}-processed.ipynb
+    
+      - name: Output execution result
+        if: always()
+        run: |
+          echo "Notebook: ${{ matrix.notebook.name }}"
+          echo "Status: ${{ steps.set_status.outputs.status }}"
+          echo "HTML Path: ${{ steps.set_status.outputs.html_path }}"
+  
+  generate-summary:
+    name: Generate Summary Report
+    runs-on: arc-runner-set-oke-org-poc-1-gpu
+    needs: execute-notebooks
+    if: always()
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+    
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+    
+      - name: Generate summary report
+        run: |
+          SUMMARY_FILE=".github/workflows/execution-summary.md"
+          
+          cat > "$SUMMARY_FILE" << 'EOF'
+          # Notebook Execution Summary
+          
+          Generated at: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ## Execution Results
+          
+          EOF
+          
+          # Check each notebook result
+          for notebook in ambient-patient ambient-provider; do
+            echo "### $notebook" >> "$SUMMARY_FILE"
+            echo "" >> "$SUMMARY_FILE"
+            
+            # Check if executed notebook exists
+            if [ -f "artifacts/${notebook}-executed/${notebook}-executed.ipynb" ]; then
+              echo "- **Status**: Success" >> "$SUMMARY_FILE"
+            else
+              echo "- **Status**: Failed" >> "$SUMMARY_FILE"
+            fi
+            
+            # Check if HTML file exists
+            if [ -f "artifacts/${notebook}-html/${notebook}.html" ]; then
+              echo "- **HTML Generated**: Yes" >> "$SUMMARY_FILE"
+              echo "- **HTML Path**: artifacts/${notebook}-html/${notebook}.html" >> "$SUMMARY_FILE"
+            else
+              echo "- **HTML Generated**: No" >> "$SUMMARY_FILE"
+            fi
+            
+            echo "" >> "$SUMMARY_FILE"
+          done
+          
+          echo "## Artifacts" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "All HTML files and executed notebooks are available as GitHub Actions artifacts." >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "### Download Artifacts" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "1. Go to the Actions tab in GitHub" >> "$SUMMARY_FILE"
+          echo "2. Select the workflow run" >> "$SUMMARY_FILE"
+          echo "3. Download artifacts from the Artifacts section" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "### Artifact Names" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "- \`ambient-patient-html\`: Contains the HTML output for ambient-patient" >> "$SUMMARY_FILE"
+          echo "- \`ambient-patient-executed\`: Contains the executed notebook for ambient-patient" >> "$SUMMARY_FILE"
+          echo "- \`ambient-provider-html\`: Contains the HTML output for ambient-provider" >> "$SUMMARY_FILE"
+          echo "- \`ambient-provider-executed\`: Contains the executed notebook for ambient-provider" >> "$SUMMARY_FILE"
+          
+          cat "$SUMMARY_FILE"
+    
+      - name: Upload summary report
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-summary
+          path: .github/workflows/execution-summary.md
+          retention-days: 30
+    
+      - name: Output HTML paths for next step
+        run: |
+          echo "HTML files are available in the following artifact locations:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ambient-patient.html: artifacts/ambient-patient-html/ambient-patient.html" >> $GITHUB_STEP_SUMMARY
+          echo "- ambient-provider.html: artifacts/ambient-provider-html/ambient-provider.html" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "These artifacts can be downloaded and used in subsequent workflow steps." >> $GITHUB_STEP_SUMMARY
+
