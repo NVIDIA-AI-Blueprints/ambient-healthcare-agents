@@ -43,38 +43,38 @@ jobs:
             ${{ matrix.notebook.path }} \
             .github/workflows/${{ matrix.notebook.name }}-executed.ipynb \
             --log-output \
-            --request-save-on-cell-execute \
-            --allow-errors || true
-        continue-on-error: true
+            --request-save-on-cell-execute
     
       - name: Convert executed notebook to HTML
-        if: always()
         run: |
+          if [ ! -f ".github/workflows/${{ matrix.notebook.name }}-executed.ipynb" ]; then
+            echo "ERROR: Executed notebook file not found!"
+            exit 1
+          fi
           jupyter nbconvert \
             --to html \
             --output ${{ matrix.notebook.name }}.html \
             --output-dir .github/workflows \
-            .github/workflows/${{ matrix.notebook.name }}-executed.ipynb || \
-          echo "HTML conversion failed or notebook execution failed"
-        continue-on-error: true
+            .github/workflows/${{ matrix.notebook.name }}-executed.ipynb
+          if [ ! -f ".github/workflows/${{ matrix.notebook.name }}.html" ]; then
+            echo "ERROR: HTML file was not generated!"
+            exit 1
+          fi
+          echo "HTML file generated successfully: .github/workflows/${{ matrix.notebook.name }}.html"
     
       - name: Upload HTML artifact
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.notebook.name }}-html
           path: .github/workflows/${{ matrix.notebook.name }}.html
           retention-days: 30
-          if-no-files-found: ignore
     
       - name: Upload executed notebook artifact
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.notebook.name }}-executed
           path: .github/workflows/${{ matrix.notebook.name }}-executed.ipynb
           retention-days: 30
-          if-no-files-found: ignore
     
       - name: Set execution status
         if: always()
