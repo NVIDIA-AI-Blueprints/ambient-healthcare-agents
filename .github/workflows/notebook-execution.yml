@@ -4,6 +4,15 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      deployment_option:
+        description: 'Deployment option for ambient-provider (1 or 2)'
+        required: false
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
 
 jobs:
   execute-notebooks:
@@ -13,8 +22,8 @@ jobs:
       fail-fast: false
       matrix:
         notebook:
-          - name: ambient-patient
-            path: ambient-patient.ipynb
+          # - name: ambient-patient
+          #   path: ambient-patient.ipynb
           - name: ambient-provider
             path: ambient-provider.ipynb
     
@@ -38,6 +47,7 @@ jobs:
         env:
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          DEPLOYMENT_OPTION: ${{ github.event.inputs.deployment_option || '1' }}
         run: |
           papermill \
             ${{ matrix.notebook.path }} \
