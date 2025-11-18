@@ -49,38 +49,11 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           DEPLOYMENT_OPTION: ${{ github.event.inputs.deployment_option || '1' }}
         run: |
-          echo "::group::Notebook Execution Logs (${{ matrix.notebook.name }})"
           papermill \
             ${{ matrix.notebook.path }} \
             .github/workflows/${{ matrix.notebook.name }}-executed.ipynb \
             --log-output \
-            --request-save-on-cell-execute 2>&1 | awk '
-            {
-              # Always print important messages (cell execution markers, errors)
-              if (/^Executing Cell|^Ending Cell|^Traceback|^Error|^Exception|^---------------------------------------------------------------------------|^PapermillExecutionError/) {
-                print
-                prev_line = ""
-                next
-              }
-              # For progress bar lines, only print unique lines (deduplicate)
-              if (/Preparing packages|Building |MiB\/|MiB$|⠹|⠸|⠴|⠦|⠧|⠇|⠏|⠋|⠉|⠈/) {
-                if ($0 != prev_progress) {
-                  prev_progress = $0
-                  # Throttle progress output: only print every 20th progress line
-                  progress_count++
-                  if (progress_count % 20 == 0) {
-                    print
-                  }
-                }
-                next
-              }
-              # For other lines, deduplicate consecutive duplicates
-              if ($0 != prev_line) {
-                print
-                prev_line = $0
-              }
-            }'
-          echo "::endgroup::"
+            --request-save-on-cell-execute
     
       - name: Convert executed notebook to HTML
         run: |
