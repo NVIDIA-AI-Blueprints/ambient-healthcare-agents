@@ -34,24 +34,17 @@ jobs:
           pip install --upgrade pip
           pip install papermill jupyter nbconvert
     
-      - name: Preprocess notebook
-        run: |
-          python .github/scripts/preprocess_notebook.py \
-            ${{ matrix.notebook.path }} \
-            .github/workflows/${{ matrix.notebook.name }}-processed.ipynb
-    
       - name: Execute notebook with papermill
         env:
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           papermill \
-            .github/workflows/${{ matrix.notebook.name }}-processed.ipynb \
+            ${{ matrix.notebook.path }} \
             .github/workflows/${{ matrix.notebook.name }}-executed.ipynb \
-            -p NGC_API_KEY "${{ secrets.NGC_API_KEY }}" \
-            -p NVIDIA_API_KEY "${{ secrets.NVIDIA_API_KEY }}" \
             --log-output \
-            --request-save-on-cell-execute || true
+            --request-save-on-cell-execute \
+            --allow-errors || true
         continue-on-error: true
     
       - name: Convert executed notebook to HTML
@@ -95,10 +88,6 @@ jobs:
             echo "html_path=" >> $GITHUB_OUTPUT
           fi
     
-      - name: Cleanup temporary files
-        if: always()
-        run: |
-          rm -f .github/workflows/${{ matrix.notebook.name }}-processed.ipynb
     
       - name: Output execution result
         if: always()
