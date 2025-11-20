@@ -43,6 +43,11 @@ jobs:
           curl -o notebook_runner.py https://raw.githubusercontent.com/nv-blueprint-org/Blueprint-Utils/refs/heads/main/notebook_runner/notebook_runner.py
           chmod +x notebook_runner.py
     
+      - name: Install and register Jupyter kernel
+        run: |
+          pip install ipykernel
+          python3 -m ipykernel install --user --name python3 --display-name "Python 3"
+    
       - name: Execute notebook and convert to HTML
         env:
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
