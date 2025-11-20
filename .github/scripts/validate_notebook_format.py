@@ -92,9 +92,60 @@ def validate_notebook_source_format(notebook_path: Path) -> Tuple[bool, List[str
                                     f"Cell {cell_idx}: Element {elem_idx} missing newline. "
                                     f"Content: {repr(elem[:50])}... → {repr(next_elem[:30])}..."
                                 )
+        
+        # Additional check: Shell script logic errors
+        # Check for backslash continuation followed by empty line
+        if isinstance(source, list):
+            for elem_idx in range(len(source) - 1):
+                elem = source[elem_idx]
+                next_elem = source[elem_idx + 1]
+                
+                if isinstance(elem, str) and isinstance(next_elem, str):
+                    # Check if line ends with backslash (continuation character)
+                    # In Python strings, '\\' represents a single backslash character
+                    elem_stripped = elem.rstrip()
+                    # Check if ends with backslash (in Python string literal: '\\' = single \)
+                    # Use regex to properly detect backslash at end
+                    import re
+                    ends_with_backslash = bool(re.search(r'\\$', elem_stripped))
+                    ends_with_and_backslash = bool(re.search(r' && \\$', elem_stripped))
+                    
+                    if ends_with_backslash or ends_with_and_backslash:
+                        # Check if next line is empty or only whitespace
+                        if next_elem.strip() == '':
+                            errors.append(
+                                f"Cell {cell_idx}: Element {elem_idx} has backslash continuation "
+                                f"followed by empty line. This will cause 'sh: X: : not found' error. "
+                                f"Content: {repr(elem[:60])}..."
+                            )
+                        # Check if next line doesn't continue the command (doesn't start with space/tab)
+                        elif not next_elem.startswith(' ') and not next_elem.startswith('\t') and next_elem.strip():
+                            # Next line is not a continuation, but current line has backslash
+                            # This might be intentional, but could be an error
+                            # Only warn if it's clearly a problem (next line starts a new command)
+                            if next_elem.strip().startswith(('echo', 'if', 'for', 'while', 'done', 'fi', 'then', 'else')):
+                                errors.append(
+                                    f"Cell {cell_idx}: Element {elem_idx} has backslash continuation "
+                                    f"but next line starts a new command. Remove the backslash or add continuation. "
+                                    f"Content: {repr(elem[:60])}... → {repr(next_elem[:30])}..."
+                                )
+        
         elif isinstance(source, str):
-            # Single string format is always valid
-            pass
+            # Single string format: check for backslash + empty line pattern
+            import re
+            lines = source.split('\n')
+            for i in range(len(lines) - 1):
+                line = lines[i]
+                next_line = lines[i + 1]
+                line_stripped = line.rstrip()
+                ends_with_backslash = bool(re.search(r'\\$', line_stripped))
+                ends_with_and_backslash = bool(re.search(r' && \\$', line_stripped))
+                if ends_with_backslash or ends_with_and_backslash:
+                    if next_line.strip() == '':
+                        errors.append(
+                            f"Cell {cell_idx}: Line {i+1} has backslash continuation "
+                            f"followed by empty line. This will cause shell script errors."
+                        )
     
     return len(errors) == 0, errors
 
