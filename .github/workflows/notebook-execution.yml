@@ -38,6 +38,10 @@ jobs:
         with:
           python-version: '3.13'
     
+      - name: Validate notebook format
+        run: |
+          python3 .github/scripts/validate_notebook_format.py ${{ matrix.notebook.path }}
+    
       - name: Download notebook_runner_nbclient.py
         run: |
           curl -o notebook_runner_nbclient.py https://raw.githubusercontent.com/nv-blueprint-org/Blueprint-Utils/refs/heads/main/notebook_runner/notebook_runner_nbclient.py
