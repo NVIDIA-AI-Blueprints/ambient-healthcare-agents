@@ -38,39 +38,58 @@ jobs:
         with:
           python-version: '3.13'
     
-      - name: Install dependencies
+      - name: Download notebook_runner.py
         run: |
-          pip install --upgrade pip
-          pip install papermill jupyter nbconvert
+          curl -o notebook_runner.py https://raw.githubusercontent.com/nv-blueprint-org/Blueprint-Utils/refs/heads/main/notebook_runner/notebook_runner.py
+          chmod +x notebook_runner.py
     
-      - name: Execute notebook with papermill
+      - name: Execute notebook and convert to HTML
         env:
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           DEPLOYMENT_OPTION: ${{ github.event.inputs.deployment_option || '1' }}
         run: |
-          papermill \
-            ${{ matrix.notebook.path }} \
-            .github/workflows/${{ matrix.notebook.name }}-executed.ipynb \
-            --log-output \
-            --request-save-on-cell-execute
-    
-      - name: Convert executed notebook to HTML
-        run: |
+          python3 notebook_runner.py \
+            -f ${{ matrix.notebook.path }} \
+            --output-dir .github/workflows \
+            -e NGC_API_KEY=${{ secrets.NGC_API_KEY }} \
+            -e NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}
+          
+          # Move files to expected locations with correct names
+          mkdir -p .github/workflows
+          
+          # The script generates files in the output directory with names based on input notebook
+          NOTEBOOK_BASENAME=$(basename "${{ matrix.notebook.path }}" .ipynb)
+          EXECUTED_NOTEBOOK=".github/workflows/${NOTEBOOK_BASENAME}.executed.ipynb"
+          HTML_FILE=".github/workflows/${NOTEBOOK_BASENAME}.html"
+          
+          # Rename files to match expected names
+          if [ -f "$EXECUTED_NOTEBOOK" ]; then
+            mv "$EXECUTED_NOTEBOOK" .github/workflows/${{ matrix.notebook.name }}-executed.ipynb
+            echo "Renamed executed notebook to .github/workflows/${{ matrix.notebook.name }}-executed.ipynb"
+          else
+            echo "ERROR: Executed notebook not found at $EXECUTED_NOTEBOOK"
+            exit 1
+          fi
+          
+          if [ -f "$HTML_FILE" ]; then
+            mv "$HTML_FILE" .github/workflows/${{ matrix.notebook.name }}.html
+            echo "Renamed HTML file to .github/workflows/${{ matrix.notebook.name }}.html"
+          else
+            echo "ERROR: HTML file not found at $HTML_FILE"
+            exit 1
+          fi
+          
+          # Verify outputs
           if [ ! -f ".github/workflows/${{ matrix.notebook.name }}-executed.ipynb" ]; then
             echo "ERROR: Executed notebook file not found!"
             exit 1
           fi
-          jupyter nbconvert \
-            --to html \
-            --output ${{ matrix.notebook.name }}.html \
-            --output-dir .github/workflows \
-            .github/workflows/${{ matrix.notebook.name }}-executed.ipynb
           if [ ! -f ".github/workflows/${{ matrix.notebook.name }}.html" ]; then
             echo "ERROR: HTML file was not generated!"
             exit 1
           fi
-          echo "HTML file generated successfully: .github/workflows/${{ matrix.notebook.name }}.html"
+          echo "Notebook execution and HTML conversion completed successfully"
     
       - name: Upload HTML artifact
         uses: actions/upload-artifact@v4
