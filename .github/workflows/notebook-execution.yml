@@ -221,4 +221,3 @@ jobs:
           echo "- ambient-provider.html: artifacts/ambient-provider-html/ambient-provider.html" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "These artifacts can be downloaded and used in subsequent workflow steps." >> $GITHUB_STEP_SUMMARY
-
