@@ -80,6 +80,22 @@ jobs:
           EOF
           echo "Created compose.override.yml with fixed health check endpoints"
     
+      - name: Pre-configure API environment file
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
+        run: |
+          # Create .env file with actual API keys before notebook runs make bootstrap
+          # This prevents "NVIDIA_API_KEY is still a placeholder" error
+          mkdir -p ambient-provider/ambient-scribe/apps/api
+          cat > ambient-provider/ambient-scribe/apps/api/.env << EOF
+          # Auto-configured by GitHub Actions workflow
+          NVIDIA_API_KEY=${NVIDIA_API_KEY}
+          NGC_API_KEY=${NGC_API_KEY}
+          RIVA_URI=parakeet-nim:50051
+          EOF
+          echo "Pre-configured apps/api/.env with API keys"
+    
       - name: Execute notebook and convert to HTML
         env:
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
