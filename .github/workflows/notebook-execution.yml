@@ -49,9 +49,9 @@ jobs:
             https://raw.githubusercontent.com/NVIDIA-AI-Blueprints/blueprint-github-test/main/utils/notebook_runner/notebook_runner_nbclient.py
           chmod +x notebook_runner_nbclient.py
     
-      - name: Install and register Jupyter kernel
+      - name: Install dependencies and register Jupyter kernel
         run: |
-          pip install ipykernel
+          pip install ipykernel nbclient nbformat jupyter nbconvert
           python3 -m ipykernel install --user --name python3 --display-name "Python 3"
     
       - name: Execute notebook and convert to HTML
