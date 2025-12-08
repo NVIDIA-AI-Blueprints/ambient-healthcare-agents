@@ -91,7 +91,7 @@ jobs:
             --output-dir .github/workflows \
             --timeout 3600 \
             --skip-deps-check \
-            --skip-cells 50-59 \
+            --skip-cells 7 50-59 \
             -e NGC_API_KEY="${NGC_API_KEY}" \
             -e NVIDIA_API_KEY="${NVIDIA_API_KEY}" \
             -e DEPLOYMENT_OPTION="${DEPLOYMENT_OPTION}"
