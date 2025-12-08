@@ -120,18 +120,29 @@ jobs:
           EXECUTED_NOTEBOOK=".github/workflows/${NOTEBOOK_BASENAME}.executed.ipynb"
           HTML_FILE=".github/workflows/${NOTEBOOK_BASENAME}.html"
           
-          # Rename files to match expected names
+          # Rename files to match expected names (only if different)
+          TARGET_NOTEBOOK=".github/workflows/${{ matrix.notebook.name }}-executed.ipynb"
+          TARGET_HTML=".github/workflows/${{ matrix.notebook.name }}.html"
+          
           if [ -f "$EXECUTED_NOTEBOOK" ]; then
-            mv "$EXECUTED_NOTEBOOK" .github/workflows/${{ matrix.notebook.name }}-executed.ipynb
-            echo "Renamed executed notebook to .github/workflows/${{ matrix.notebook.name }}-executed.ipynb"
+            if [ "$EXECUTED_NOTEBOOK" != "$TARGET_NOTEBOOK" ]; then
+              mv "$EXECUTED_NOTEBOOK" "$TARGET_NOTEBOOK"
+              echo "Renamed executed notebook to $TARGET_NOTEBOOK"
+            else
+              echo "Executed notebook already at correct location: $TARGET_NOTEBOOK"
+            fi
           else
             echo "ERROR: Executed notebook not found at $EXECUTED_NOTEBOOK"
             exit 1
           fi
           
           if [ -f "$HTML_FILE" ]; then
-            mv "$HTML_FILE" .github/workflows/${{ matrix.notebook.name }}.html
-            echo "Renamed HTML file to .github/workflows/${{ matrix.notebook.name }}.html"
+            if [ "$HTML_FILE" != "$TARGET_HTML" ]; then
+              mv "$HTML_FILE" "$TARGET_HTML"
+              echo "Renamed HTML file to $TARGET_HTML"
+            else
+              echo "HTML file already at correct location: $TARGET_HTML"
+            fi
           else
             echo "ERROR: HTML file not found at $HTML_FILE"
             exit 1
