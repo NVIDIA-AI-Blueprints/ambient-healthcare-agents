@@ -17,7 +17,7 @@ on:
 jobs:
   execute-notebooks:
     name: Execute Notebooks
-    runs-on: arc-runner-set-oke-org-poc-1-gpu
+    runs-on: arc-runner-set-oke-org-poc-2-gpu
     strategy:
       fail-fast: false
       matrix:
@@ -141,7 +141,7 @@ jobs:
   
   generate-summary:
     name: Generate Summary Report
-    runs-on: arc-runner-set-oke-org-poc-1-gpu
+    runs-on: arc-runner-set-oke-org-poc-2-gpu
     needs: execute-notebooks
     if: always()
     
