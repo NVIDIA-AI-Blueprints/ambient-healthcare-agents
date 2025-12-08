@@ -44,7 +44,9 @@ jobs:
     
       - name: Download notebook_runner_nbclient.py
         run: |
-          curl -o notebook_runner_nbclient.py https://raw.githubusercontent.com/nv-blueprint-org/Blueprint-Utils/refs/heads/main/notebook_runner/notebook_runner_nbclient.py
+          curl -H "Authorization: token ${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN_ON_GH }}" \
+            -o notebook_runner_nbclient.py \
+            https://raw.githubusercontent.com/NVIDIA-AI-Blueprints/blueprint-github-test/main/utils/notebook_runner/notebook_runner_nbclient.py
           chmod +x notebook_runner_nbclient.py
     
       - name: Install and register Jupyter kernel
@@ -62,9 +64,10 @@ jobs:
             -f ${{ matrix.notebook.path }} \
             --output-dir .github/workflows \
             --timeout 3600 \
-            -e NGC_API_KEY=${{ secrets.NGC_API_KEY }} \
-            -e NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }} \
-            -e DEPLOYMENT_OPTION=${{ github.event.inputs.deployment_option || '1' }}
+            --skip-deps-check \
+            -e NGC_API_KEY="${NGC_API_KEY}" \
+            -e NVIDIA_API_KEY="${NVIDIA_API_KEY}" \
+            -e DEPLOYMENT_OPTION="${DEPLOYMENT_OPTION}"
           
           # Move files to expected locations with correct names
           mkdir -p .github/workflows
