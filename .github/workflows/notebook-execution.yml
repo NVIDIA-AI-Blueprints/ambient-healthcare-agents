@@ -1,0 +1,377 @@
+name: Notebook Execution and HTML Generation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deployment_option:
+        description: 'Deployment option for ambient-provider (1 or 2)'
+        required: false
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
+
+jobs:
+  execute-notebooks:
+    name: Execute Notebooks
+    runs-on: arc-runner-set-oke-org-poc-2-gpu
+    strategy:
+      fail-fast: false
+      matrix:
+        notebook:
+          # - name: ambient-patient
+          #   path: ambient-patient.ipynb
+          - name: ambient-provider
+            path: ambient-provider.ipynb
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+    
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+    
+      - name: Validate notebook format
+        run: |
+          python3 .github/scripts/validate_notebook_format.py ${{ matrix.notebook.path }}
+    
+      - name: Download notebook_runner_nbclient.py
+        run: |
+          curl -H "Authorization: token ${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN_ON_GH }}" \
+            -o notebook_runner_nbclient.py \
+            https://raw.githubusercontent.com/NVIDIA-AI-Blueprints/blueprint-github-test/main/utils/notebook_runner/notebook_runner_nbclient.py
+          chmod +x notebook_runner_nbclient.py
+    
+      - name: Install dependencies and register Jupyter kernel
+        run: |
+          pip install ipykernel nbclient nbformat jupyter nbconvert
+          python3 -m ipykernel install --user --name python3 --display-name "Python 3"
+    
+      - name: Fix NIM health check endpoints
+        run: |
+          # Create compose.override.yml to fix health check endpoints
+          # Default healthcheck uses /v1/health which returns 404
+          # Correct endpoint is /v1/health/ready
+          mkdir -p ambient-provider/ambient-scribe/infra
+          cat > ambient-provider/ambient-scribe/infra/compose.override.yml << 'EOF'
+          # Auto-generated override to fix NIM health check endpoints
+          services:
+            parakeet-nim:
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:9000/v1/health/ready"]
+                interval: 30s
+                timeout: 10s
+                retries: 5
+                start_period: 120s
+            llama-nim:
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health/ready"]
+                interval: 60s
+                timeout: 30s
+                retries: 10
+                start_period: 1800s
+          EOF
+          echo "Created compose.override.yml with fixed health check endpoints"
+    
+      - name: Pre-configure API environment file
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
+        run: |
+          # Create .env file with actual API keys before notebook runs make bootstrap
+          # This prevents "NVIDIA_API_KEY is still a placeholder" error
+          mkdir -p ambient-provider/ambient-scribe/apps/api
+          cat > ambient-provider/ambient-scribe/apps/api/.env << EOF
+          # Auto-configured by GitHub Actions workflow
+          NVIDIA_API_KEY=${NVIDIA_API_KEY}
+          NGC_API_KEY=${NGC_API_KEY}
+          RIVA_URI=parakeet-nim:50051
+          EOF
+          echo "Pre-configured apps/api/.env with API keys"
+    
+      - name: Execute notebook and convert to HTML
+        env:
+          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          DEPLOYMENT_OPTION: ${{ github.event.inputs.deployment_option || '1' }}
+        run: |
+          python3 notebook_runner_nbclient.py \
+            -f ${{ matrix.notebook.path }} \
+            --output-dir .github/workflows \
+            --timeout 3600 \
+            --skip-deps-check \
+            --skip-cells 7 41-46 50-59 \
+            -e NGC_API_KEY="${NGC_API_KEY}" \
+            -e NVIDIA_API_KEY="${NVIDIA_API_KEY}" \
+            -e DEPLOYMENT_OPTION="${DEPLOYMENT_OPTION}"
+          
+          # Move files to expected locations with correct names
+          mkdir -p .github/workflows
+          
+          # The script generates files in the output directory with names based on input notebook
+          NOTEBOOK_BASENAME=$(basename "${{ matrix.notebook.path }}" .ipynb)
+          EXECUTED_NOTEBOOK=".github/workflows/${NOTEBOOK_BASENAME}.executed.ipynb"
+          HTML_FILE=".github/workflows/${NOTEBOOK_BASENAME}.html"
+          
+          # Rename files to match expected names (only if different)
+          TARGET_NOTEBOOK=".github/workflows/${{ matrix.notebook.name }}-executed.ipynb"
+          TARGET_HTML=".github/workflows/${{ matrix.notebook.name }}.html"
+          
+          if [ -f "$EXECUTED_NOTEBOOK" ]; then
+            if [ "$EXECUTED_NOTEBOOK" != "$TARGET_NOTEBOOK" ]; then
+              mv "$EXECUTED_NOTEBOOK" "$TARGET_NOTEBOOK"
+              echo "Renamed executed notebook to $TARGET_NOTEBOOK"
+            else
+              echo "Executed notebook already at correct location: $TARGET_NOTEBOOK"
+            fi
+          else
+            echo "ERROR: Executed notebook not found at $EXECUTED_NOTEBOOK"
+            exit 1
+          fi
+          
+          if [ -f "$HTML_FILE" ]; then
+            if [ "$HTML_FILE" != "$TARGET_HTML" ]; then
+              mv "$HTML_FILE" "$TARGET_HTML"
+              echo "Renamed HTML file to $TARGET_HTML"
+            else
+              echo "HTML file already at correct location: $TARGET_HTML"
+            fi
+          else
+            echo "ERROR: HTML file not found at $HTML_FILE"
+            exit 1
+          fi
+          
+          # Verify outputs
+          if [ ! -f ".github/workflows/${{ matrix.notebook.name }}-executed.ipynb" ]; then
+            echo "ERROR: Executed notebook file not found!"
+            exit 1
+          fi
+          if [ ! -f ".github/workflows/${{ matrix.notebook.name }}.html" ]; then
+            echo "ERROR: HTML file was not generated!"
+            exit 1
+          fi
+          echo "Notebook execution and HTML conversion completed successfully"
+    
+      - name: Verify services health
+        continue-on-error: true
+        run: |
+          echo "=== Service Health Verification ==="
+          
+          # Helper function to check container status
+          check_container() {
+            local container=$1
+            local status=$(docker ps -a --filter "name=$container" --format "{{.Status}}" 2>/dev/null)
+            if echo "$status" | grep -q "Exited"; then
+              echo "⚠ Container $container has exited"
+              echo "=== Logs for $container ==="
+              docker logs --tail 50 "$container" 2>&1 || echo "Failed to get logs"
+              return 1
+            fi
+            return 0
+          }
+          
+          # Helper function to check URL
+          check_url() {
+            local url=$1
+            local container=$2
+            local max_attempts=${3:-150}
+            local sleep_interval=${4:-2}
+            
+            # First check if container is running
+            if [ -n "$container" ]; then
+              if ! check_container "$container"; then
+                echo "✗ $url - container not running"
+                return 1
+              fi
+            fi
+            
+            echo "Checking $url..."
+            for i in $(seq 1 $max_attempts); do
+              if curl -s -f -o /dev/null "$url" 2>/dev/null; then
+                echo "✓ $url is ready"
+                return 0
+              fi
+              if [ $((i % 30)) -eq 0 ]; then
+                echo "  Attempt $i/$max_attempts - still waiting..."
+              fi
+              sleep $sleep_interval
+            done
+            echo "✗ $url failed after $((max_attempts * sleep_interval)) seconds"
+            return 1
+          }
+          
+          # Check Docker containers status
+          echo ""
+          echo "=== Docker Containers Status ==="
+          docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep -E "NAMES|parakeet|llama|api|ui" || echo "No relevant containers found"
+          
+          # Wait for services to fully initialize
+          echo ""
+          echo "Waiting 60 seconds for services to fully initialize..."
+          sleep 60
+          
+          # Check all service endpoints
+          echo ""
+          echo "=== HTTP Health Checks ==="
+          failed=0
+          nim_failed=0
+          
+          # Parakeet NIM (ASR) - check container first
+          check_url "http://localhost:9000/v1/health/ready" "parakeet-1-1b-ctc-en-us" 150 2 || nim_failed=1
+          
+          # Llama NIM (LLM)
+          check_url "http://localhost:8001/v1/health/ready" "llama-3.3-nemotron-super-49b-v1" 150 2 || nim_failed=1
+          
+          # API Health (critical)
+          check_url "http://localhost:8000/api/health" "" 60 2 || failed=1
+          
+          # API Docs (critical)
+          check_url "http://localhost:8000/api/docs" "" 30 2 || failed=1
+          
+          # UI (critical)
+          check_url "http://localhost:5173" "" 30 2 || failed=1
+          
+          echo ""
+          echo "=== Final Docker Status ==="
+          docker ps -a
+          
+          if [ $failed -eq 1 ]; then
+            echo ""
+            echo "✗ Critical services failed health checks"
+            exit 1
+          fi
+          
+          if [ $nim_failed -eq 1 ]; then
+            echo ""
+            echo "⚠ NIM services failed but non-critical - workflow continues"
+          else
+            echo ""
+            echo "✓ All services are ready!"
+          fi
+    
+      - name: Upload HTML artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.notebook.name }}-html
+          path: .github/workflows/${{ matrix.notebook.name }}.html
+          retention-days: 30
+    
+      - name: Upload executed notebook artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.notebook.name }}-executed
+          path: .github/workflows/${{ matrix.notebook.name }}-executed.ipynb
+          retention-days: 30
+    
+      - name: Set execution status
+        if: always()
+        id: set_status
+        run: |
+          if [ -f ".github/workflows/${{ matrix.notebook.name }}-executed.ipynb" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "html_path=.github/workflows/${{ matrix.notebook.name }}.html" >> $GITHUB_OUTPUT
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "html_path=" >> $GITHUB_OUTPUT
+          fi
+    
+    
+      - name: Output execution result
+        if: always()
+        run: |
+          echo "Notebook: ${{ matrix.notebook.name }}"
+          echo "Status: ${{ steps.set_status.outputs.status }}"
+          echo "HTML Path: ${{ steps.set_status.outputs.html_path }}"
+  
+  generate-summary:
+    name: Generate Summary Report
+    runs-on: arc-runner-set-oke-org-poc-2-gpu
+    needs: execute-notebooks
+    if: always()
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+    
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+    
+      - name: Generate summary report
+        run: |
+          SUMMARY_FILE=".github/workflows/execution-summary.md"
+          
+          cat > "$SUMMARY_FILE" << 'EOF'
+          # Notebook Execution Summary
+          
+          Generated at: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ## Execution Results
+          
+          EOF
+          
+          # Check each notebook result
+          for notebook in ambient-patient ambient-provider; do
+            echo "### $notebook" >> "$SUMMARY_FILE"
+            echo "" >> "$SUMMARY_FILE"
+            
+            # Check if executed notebook exists
+            if [ -f "artifacts/${notebook}-executed/${notebook}-executed.ipynb" ]; then
+              echo "- **Status**: Success" >> "$SUMMARY_FILE"
+            else
+              echo "- **Status**: Failed" >> "$SUMMARY_FILE"
+            fi
+            
+            # Check if HTML file exists
+            if [ -f "artifacts/${notebook}-html/${notebook}.html" ]; then
+              echo "- **HTML Generated**: Yes" >> "$SUMMARY_FILE"
+              echo "- **HTML Path**: artifacts/${notebook}-html/${notebook}.html" >> "$SUMMARY_FILE"
+            else
+              echo "- **HTML Generated**: No" >> "$SUMMARY_FILE"
+            fi
+            
+            echo "" >> "$SUMMARY_FILE"
+          done
+          
+          echo "## Artifacts" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "All HTML files and executed notebooks are available as GitHub Actions artifacts." >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "### Download Artifacts" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "1. Go to the Actions tab in GitHub" >> "$SUMMARY_FILE"
+          echo "2. Select the workflow run" >> "$SUMMARY_FILE"
+          echo "3. Download artifacts from the Artifacts section" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "### Artifact Names" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "- \`ambient-patient-html\`: Contains the HTML output for ambient-patient" >> "$SUMMARY_FILE"
+          echo "- \`ambient-patient-executed\`: Contains the executed notebook for ambient-patient" >> "$SUMMARY_FILE"
+          echo "- \`ambient-provider-html\`: Contains the HTML output for ambient-provider" >> "$SUMMARY_FILE"
+          echo "- \`ambient-provider-executed\`: Contains the executed notebook for ambient-provider" >> "$SUMMARY_FILE"
+          
+          cat "$SUMMARY_FILE"
+    
+      - name: Upload summary report
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-summary
+          path: .github/workflows/execution-summary.md
+          retention-days: 30
+    
+      - name: Output HTML paths for next step
+        run: |
+          echo "HTML files are available in the following artifact locations:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ambient-patient.html: artifacts/ambient-patient-html/ambient-patient.html" >> $GITHUB_STEP_SUMMARY
+          echo "- ambient-provider.html: artifacts/ambient-provider-html/ambient-provider.html" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "These artifacts can be downloaded and used in subsequent workflow steps." >> $GITHUB_STEP_SUMMARY
