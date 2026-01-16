@@ -18,6 +18,7 @@ jobs:
   execute-notebooks:
     name: Execute Notebooks
     runs-on: arc-runners-org-nvidia-ai-bp-4-gpu
+    # runs-on: arc-runner-set-oke-org-poc-4-gpu
     strategy:
       fail-fast: false
       matrix:
@@ -44,9 +45,9 @@ jobs:
     
       - name: Download notebook_runner_nbclient.py
         run: |
-          curl -H "Authorization: token ${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN_ON_GH }}" \
-            -o notebook_runner_nbclient.py \
-            https://raw.githubusercontent.com/NVIDIA-AI-Blueprints/blueprint-github-test/main/utils/notebook_runner/notebook_runner_nbclient.py
+          git clone --depth 1 https://x-access-token:${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN_ON_GH }}@github.com/NVIDIA-AI-Blueprints/blueprint-github-test.git _blueprint_test_repo
+          cp _blueprint_test_repo/utils/notebook_runner/notebook_runner_nbclient.py .
+          rm -rf _blueprint_test_repo
           chmod +x notebook_runner_nbclient.py
     
       - name: Install dependencies and register Jupyter kernel
@@ -297,6 +298,7 @@ jobs:
   generate-summary:
     name: Generate Summary Report
     runs-on: arc-runners-org-nvidia-ai-bp-4-gpu
+    # runs-on: arc-runner-set-oke-org-poc-4-gpu
     needs: execute-notebooks
     if: always()
     
