@@ -60,7 +60,7 @@ jobs:
           # Default healthcheck uses /v1/health which returns 404
           # Correct endpoint is /v1/health/ready
           mkdir -p ambient-provider/ambient-scribe/infra
-          cat > ambient-provider/ambient-scribe/infra/compose.override.yml << 'EOF'
+          cat > ambient-provider/ambient-scribe/infra/compose.override.yml <<'OVERRIDE_EOF'
           # Auto-generated override to fix NIM health check endpoints
           services:
             parakeet-nim:
@@ -77,7 +77,9 @@ jobs:
                 timeout: 30s
                 retries: 10
                 start_period: 1800s
-          EOF
+          OVERRIDE_EOF
+          # Remove leading spaces from the generated file
+          sed -i 's/^          //' ambient-provider/ambient-scribe/infra/compose.override.yml
           echo "Created compose.override.yml with fixed health check endpoints"
     
       - name: Pre-configure API environment file
@@ -88,12 +90,14 @@ jobs:
           # Create .env file with actual API keys before notebook runs make bootstrap
           # This prevents "NVIDIA_API_KEY is still a placeholder" error
           mkdir -p ambient-provider/ambient-scribe/apps/api
-          cat > ambient-provider/ambient-scribe/apps/api/.env << EOF
+          cat > ambient-provider/ambient-scribe/apps/api/.env <<ENV_EOF
           # Auto-configured by GitHub Actions workflow
           NVIDIA_API_KEY=${NVIDIA_API_KEY}
           NGC_API_KEY=${NGC_API_KEY}
           RIVA_URI=parakeet-nim:50051
-          EOF
+          ENV_EOF
+          # Remove leading spaces from the generated file
+          sed -i 's/^          //' ambient-provider/ambient-scribe/apps/api/.env
           echo "Pre-configured apps/api/.env with API keys"
     
       - name: Execute notebook and convert to HTML
@@ -309,14 +313,16 @@ jobs:
         run: |
           SUMMARY_FILE=".github/workflows/execution-summary.md"
           
-          cat > "$SUMMARY_FILE" << 'EOF'
+          cat > "$SUMMARY_FILE" <<SUMMARY_EOF
           # Notebook Execution Summary
-          
+
           Generated at: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          
+
           ## Execution Results
-          
-          EOF
+
+          SUMMARY_EOF
+          # Remove leading spaces from the generated file
+          sed -i 's/^          //' "$SUMMARY_FILE"
           
           # Check each notebook result
           for notebook in ambient-patient ambient-provider; do
@@ -375,3 +381,16 @@ jobs:
           echo "- ambient-provider.html: artifacts/ambient-provider-html/ambient-provider.html" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "These artifacts can be downloaded and used in subsequent workflow steps." >> $GITHUB_STEP_SUMMARY
+
+  scan:
+    # needs: preflight
+    if: always()
+    uses: NVIDIA-AI-Blueprints/nim-docker-scanner/.github/workflows/scan.yml@main
+    with:
+      # exclude-dirs: 'external'
+      resolve-latest: true
+      scan-docker-images: true
+      scan-hosted-nim: true
+    secrets:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NVCF_CONFIG_ON_GITHUB_TOKEN: ${{ secrets.NVCF_CONFIG_ON_GITHUB_TOKEN }}
