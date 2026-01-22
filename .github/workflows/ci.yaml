@@ -77,7 +77,7 @@ jobs:
           
           # Check 1: NGC API Key
           echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 1/5] NGC API Key                      │"
+          echo "│ [Check 1/6] NGC API Key                      │"
           echo "└──────────────────────────────────────────────┘"
           if [ -z "${NGC_API_KEY}" ]; then
             echo "✗ ERROR: NGC_API_KEY is not set"
@@ -89,7 +89,7 @@ jobs:
           
           # Check 2: NVIDIA API Key
           echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 2/5] NVIDIA API Key                   │"
+          echo "│ [Check 2/6] NVIDIA API Key                   │"
           echo "└──────────────────────────────────────────────┘"
           if [ -z "${NVIDIA_API_KEY}" ]; then
             echo "✗ ERROR: NVIDIA_API_KEY is not set"
@@ -101,7 +101,7 @@ jobs:
           
           # Check 3: Test Image can be pulled
           echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 3/5] Test Image                       │"
+          echo "│ [Check 3/6] Test Image                       │"
           echo "└──────────────────────────────────────────────┘"
           echo "Pulling test image: ${{ env.TEST_IMAGE }}"
           if docker pull ${{ env.TEST_IMAGE }}; then
@@ -114,7 +114,7 @@ jobs:
           
           # Check 4: Required notebooks exist
           echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 4/5] Required Notebooks               │"
+          echo "│ [Check 4/6] Required Notebooks               │"
           echo "└──────────────────────────────────────────────┘"
           if [ -f "ambient-provider.ipynb" ]; then
             echo "✓ ambient-provider.ipynb exists"
@@ -132,7 +132,7 @@ jobs:
           
           # Check 5: Submodules
           echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 5/5] Git Submodules                   │"
+          echo "│ [Check 5/6] Git Submodules                   │"
           echo "└──────────────────────────────────────────────┘"
           if [ -d "ambient-provider" ] && [ "$(ls -A ambient-provider 2>/dev/null)" ]; then
             echo "✓ ambient-provider submodule is initialized"
@@ -143,6 +143,24 @@ jobs:
             echo "✓ ambient-patient submodule is initialized"
           else
             echo "⚠ WARNING: ambient-patient submodule may not be initialized"
+          fi
+          echo ""
+          
+          # Check 6: Clone qa-tester repository
+          echo "┌──────────────────────────────────────────────┐"
+          echo "│ [Check 6/6] QA Tester Repository             │"
+          echo "└──────────────────────────────────────────────┘"
+          echo "Cloning qa-tester repository..."
+          if git clone --depth 1 https://x-access-token:${{ github.token }}@github.com/bp-cicd-org/qa-tester.git _qa_tester; then
+            if [ -f "_qa_tester/utils/notebook_runner/notebook_runner_nbclient.py" ]; then
+              echo "✓ qa-tester cloned and notebook_runner_nbclient.py found"
+            else
+              echo "✗ ERROR: notebook_runner_nbclient.py not found in qa-tester"
+              FAILED=1
+            fi
+          else
+            echo "✗ ERROR: Cannot clone qa-tester repository"
+            FAILED=1
           fi
           echo ""
           
@@ -219,7 +237,7 @@ jobs:
       - name: Download Notebook Runner
         run: |
           echo "Cloning qa-tester repository..."
-          git clone --depth 1 ${{ env.QA_TESTER_REPO }} _qa_tester
+          git clone --depth 1 https://x-access-token:${{ github.token }}@github.com/bp-cicd-org/qa-tester.git _qa_tester
           cp _qa_tester/utils/notebook_runner/notebook_runner_nbclient.py .
           rm -rf _qa_tester
           chmod +x notebook_runner_nbclient.py
@@ -436,7 +454,7 @@ jobs:
       - name: Download Notebook Runner
         run: |
           echo "Cloning qa-tester repository..."
-          git clone --depth 1 ${{ env.QA_TESTER_REPO }} _qa_tester
+          git clone --depth 1 https://x-access-token:${{ github.token }}@github.com/bp-cicd-org/qa-tester.git _qa_tester
           cp _qa_tester/utils/notebook_runner/notebook_runner_nbclient.py .
           rm -rf _qa_tester
           chmod +x notebook_runner_nbclient.py
