@@ -291,6 +291,10 @@ jobs:
           echo "  EXECUTING NOTEBOOK: ambient-provider"
           echo "========================================"
           
+          # Export environment variables for notebook execution
+          export NVIDIA_API_KEY="${NVIDIA_API_KEY}"
+          export NGC_API_KEY="${NGC_API_KEY}"
+          
           COMMIT_SHA=$(git rev-parse --short=7 HEAD)
           
           python notebook_runner_nbclient.py \
@@ -515,6 +519,10 @@ jobs:
           echo "========================================"
           echo "  EXECUTING NOTEBOOK: ambient-patient"
           echo "========================================"
+          
+          # Export environment variables for notebook execution
+          export NVIDIA_API_KEY="${NVIDIA_API_KEY}"
+          export NGC_API_KEY="${NGC_API_KEY}"
           
           COMMIT_SHA=$(git rev-parse --short=7 HEAD)
           
