@@ -332,7 +332,6 @@ jobs:
       # ==========================================
       - name: Run UI Tests - Ambient Provider
         id: pytest
-        continue-on-error: true
         run: |
           echo "========================================"
           echo "  RUNNING PYTEST: ambient_provider UI"
@@ -364,8 +363,7 @@ jobs:
               --api-url="$API_URL" \
               --disable-warnings \
               --self-contained-html \
-              --html=/app/reports/${REPORT_FILE} \
-            || echo "pytest_exit_code=$?" >> $GITHUB_OUTPUT
+              --html=/app/reports/${REPORT_FILE}
           
           echo ""
           echo "Test report saved to: test_reports/${REPORT_FILE}"
@@ -574,7 +572,6 @@ jobs:
       # ==========================================
       - name: Run UI Tests - Ambient Patient Agent
         id: pytest_agent
-        continue-on-error: true
         run: |
           echo "========================================"
           echo "  RUNNING PYTEST: ambient_patient_agent UI"
@@ -599,15 +596,13 @@ jobs:
               --ambient-agent-ui-url="$AGENT_UI_URL" \
               --disable-warnings \
               --self-contained-html \
-              --html=/app/reports/${REPORT_FILE} \
-            || echo "pytest_agent_exit_code=$?" >> $GITHUB_OUTPUT
+              --html=/app/reports/${REPORT_FILE}
           
           echo ""
           echo "Test report saved to: test_reports/${REPORT_FILE}"
 
       - name: Run UI Tests - Ambient Patient Voice
         id: pytest_voice
-        continue-on-error: true
         run: |
           echo "========================================"
           echo "  RUNNING PYTEST: ambient_patient_voice UI"
@@ -632,8 +627,7 @@ jobs:
               --ambient-patient-voice-ui-url="$VOICE_UI_URL" \
               --disable-warnings \
               --self-contained-html \
-              --html=/app/reports/${REPORT_FILE} \
-            || echo "pytest_voice_exit_code=$?" >> $GITHUB_OUTPUT
+              --html=/app/reports/${REPORT_FILE}
           
           echo ""
           echo "Test report saved to: test_reports/${REPORT_FILE}"
