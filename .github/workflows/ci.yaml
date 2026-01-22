@@ -13,6 +13,12 @@
 #   - ambient-patient:  ambient_patient_agent and ui
 #   - ambient-patient:  ambient_patient_voice and ui
 #
+# -----------------------------------------------------------------------------
+# Notebook → HTML Mapping (for pytest)
+# -----------------------------------------------------------------------------
+# This project only has UI tests, no notebook tests.
+# No HTML mapping is required - notebooks are used for deployment only.
+#
 # =============================================================================
 
 name: Ambient Healthcare Agents CI
