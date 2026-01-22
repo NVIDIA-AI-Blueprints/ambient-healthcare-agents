@@ -30,10 +30,6 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      skip_notebook:
-        description: 'Skip notebook execution (UI tests will also be skipped - this repo has no notebook tests)'
-        type: boolean
-        default: false
       run_ambient_provider:
         description: 'Run Ambient Provider tests'
         required: false
@@ -188,12 +184,12 @@ jobs:
           echo "========================================"
 
   # ============================================
-  # AMBIENT PROVIDER: Notebook Deploy (skip if skip_notebook=true)
+  # AMBIENT PROVIDER: Deploy & Test
   # ============================================
   ambient-provider:
-    name: Ambient Provider - Deploy
+    name: Ambient Provider - Deploy & Test
     needs: preflight
-    if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || (inputs.run_ambient_provider && !inputs.skip_notebook)) }}
+    if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_ambient_provider) }}
     runs-on: arc-runner-set-oke-org-poc-4-gpu
     # runs-on: arc-runners-org-nvidia-ai-bp-2-gpu
     timeout-minutes: 180
@@ -404,13 +400,13 @@ jobs:
           echo "✓ Cleanup completed"
 
   # ============================================
-  # AMBIENT PATIENT: Notebook Deploy (skip if skip_notebook=true)
+  # AMBIENT PATIENT: Deploy & Test
   # Note: UI tests must run on same runner as deploy (services need to be accessible)
   # ============================================
   ambient-patient:
     name: Ambient Patient - Deploy & Test
     needs: preflight
-    if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || (inputs.run_ambient_patient && !inputs.skip_notebook)) }}
+    if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_ambient_patient) }}
     runs-on: arc-runner-set-oke-org-poc-4-gpu
     # runs-on: arc-runners-org-nvidia-ai-bp-8-gpu
     timeout-minutes: 240
