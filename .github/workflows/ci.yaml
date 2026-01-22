@@ -30,6 +30,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      skip_notebook:
+        description: 'Skip notebook execution (UI tests will also be skipped - this repo has no notebook tests)'
+        type: boolean
+        default: false
       run_ambient_provider:
         description: 'Run Ambient Provider tests'
         required: false
@@ -184,12 +188,12 @@ jobs:
           echo "========================================"
 
   # ============================================
-  # AMBIENT PROVIDER: Notebook Deploy + UI Test
+  # AMBIENT PROVIDER: Notebook Deploy (skip if skip_notebook=true)
   # ============================================
   ambient-provider:
-    name: Ambient Provider - Deploy & Test
+    name: Ambient Provider - Deploy
     needs: preflight
-    if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_ambient_provider) }}
+    if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || (inputs.run_ambient_provider && !inputs.skip_notebook)) }}
     runs-on: arc-runner-set-oke-org-poc-4-gpu
     # runs-on: arc-runners-org-nvidia-ai-bp-2-gpu
     timeout-minutes: 180
@@ -335,6 +339,7 @@ jobs:
 
       # ==========================================
       # PHASE 5: Run pytest UI Tests
+      # Note: UI tests must run on same runner as deploy (services need to be accessible)
       # ==========================================
       - name: Run UI Tests - Ambient Provider
         id: pytest
@@ -346,11 +351,6 @@ jobs:
           COMMIT_SHA=$(git rev-parse --short=7 HEAD)
           REPORT_FILE="ambient_provider_${COMMIT_SHA}_test_report.html"
           
-          # Determine Docker network
-          DOCKER_NETWORK=$(docker network ls --format "{{.Name}}" | grep -E "(ambient|provider)" | head -1 || echo "bridge")
-          echo "Using Docker network: $DOCKER_NETWORK"
-          
-          # Find service URLs
           PROVIDER_UI_URL="http://localhost:5173"
           API_URL="http://localhost:8000"
           
@@ -358,7 +358,8 @@ jobs:
           echo "API URL: $API_URL"
           echo ""
           
-          # Run pytest with test image
+          mkdir -p test_reports
+          
           docker run --rm \
             --network host \
             -v "$(pwd)/notebook_output:/app/input" \
@@ -399,12 +400,13 @@ jobs:
           echo "✓ Cleanup completed"
 
   # ============================================
-  # AMBIENT PATIENT: Notebook Deploy + UI Test
+  # AMBIENT PATIENT: Notebook Deploy (skip if skip_notebook=true)
+  # Note: UI tests must run on same runner as deploy (services need to be accessible)
   # ============================================
   ambient-patient:
     name: Ambient Patient - Deploy & Test
     needs: preflight
-    if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_ambient_patient) }}
+    if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || (inputs.run_ambient_patient && !inputs.skip_notebook)) }}
     runs-on: arc-runner-set-oke-org-poc-4-gpu
     # runs-on: arc-runners-org-nvidia-ai-bp-8-gpu
     timeout-minutes: 240
