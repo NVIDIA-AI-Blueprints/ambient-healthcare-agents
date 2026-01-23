@@ -278,6 +278,14 @@ jobs:
       # ==========================================
       # PHASE 4: Execute Notebook (Deploy)
       # ==========================================
+      - name: Preprocess Notebook - Replace input() with env var
+        run: |
+          echo "Replacing input() calls with environment variable in notebook..."
+          # Replace input("Enter your NGC API key: ") with os.environ.get("NGC_API_KEY")
+          sed -i 's/input("Enter your NGC API key: ")/os.environ.get("NGC_API_KEY")/g' ambient-provider.ipynb
+          sed -i "s/input('Enter your NGC API key: ')/os.environ.get('NGC_API_KEY')/g" ambient-provider.ipynb
+          echo "✓ Notebook preprocessed"
+
       - name: Execute Notebook - Deploy Ambient Provider
         env:
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
@@ -507,6 +515,14 @@ jobs:
       # ==========================================
       # PHASE 4: Execute Notebook (Deploy)
       # ==========================================
+      - name: Preprocess Notebook - Replace input() with env var
+        run: |
+          echo "Replacing input() calls with environment variable in notebook..."
+          # Replace input("Enter your NGC API key: ") with os.environ.get("NGC_API_KEY")
+          sed -i 's/input("Enter your NGC API key: ")/os.environ.get("NGC_API_KEY")/g' ambient-patient.ipynb
+          sed -i "s/input('Enter your NGC API key: ')/os.environ.get('NGC_API_KEY')/g" ambient-patient.ipynb
+          echo "✓ Notebook preprocessed"
+
       - name: Execute Notebook - Deploy Ambient Patient
         env:
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
