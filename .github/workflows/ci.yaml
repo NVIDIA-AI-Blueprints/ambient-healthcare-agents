@@ -300,13 +300,14 @@ jobs:
           # - Cell 19: systemctl restart docker
           # - Cell 20: chmod /ephemeral
           # - Cell 42: Shell commands without ! prefix (SyntaxError)
+          # - Cell 51: ngrok install/config without ! prefix (SyntaxError)
           python notebook_runner_nbclient.py \
             -f ambient-provider.ipynb \
             --output-dir notebook_output \
             --timeout 3600 \
             --skip-deps-check \
             --skip-tags ci-skip \
-            --skip-cells 1 7 15 16 18 19 20 42 \
+            --skip-cells 1 7 15 16 18 19 20 42 51 \
             -e NGC_API_KEY="${NGC_API_KEY}" \
             -e NVIDIA_API_KEY="${NVIDIA_API_KEY}"
           
