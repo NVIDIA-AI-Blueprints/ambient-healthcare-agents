@@ -559,58 +559,119 @@ jobs:
           echo "Generated files:"
           ls -la notebook_output/
 
+      - name: Debug Service Endpoints
+        run: |
+          echo "========================================"
+          echo "  COMPREHENSIVE DEBUG: SERVICE ENDPOINTS"
+          echo "========================================"
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "1. ALL DOCKER CONTAINERS STATUS"
+          echo "════════════════════════════════════════════════════════════════"
+          docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "2. CONTAINER: app-server-healthcare-assistant FULL LOGS"
+          echo "════════════════════════════════════════════════════════════════"
+          docker logs app-server-healthcare-assistant 2>&1 || echo "Container not found"
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "3. CONTAINER INSPECT: app-server-healthcare-assistant"
+          echo "════════════════════════════════════════════════════════════════"
+          docker inspect app-server-healthcare-assistant --format='
+          Image: {{.Config.Image}}
+          Cmd: {{.Config.Cmd}}
+          Entrypoint: {{.Config.Entrypoint}}
+          WorkingDir: {{.Config.WorkingDir}}
+          ExposedPorts: {{range $port, $_ := .Config.ExposedPorts}}{{$port}} {{end}}
+          PortBindings: {{range $port, $bindings := .NetworkSettings.Ports}}{{$port}}->{{range $bindings}}{{.HostPort}}{{end}} {{end}}
+          ' 2>&1 || echo "Container not found"
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "4. CONTAINER ENV VARS: app-server-healthcare-assistant"
+          echo "════════════════════════════════════════════════════════════════"
+          docker exec app-server-healthcare-assistant env 2>&1 | grep -v "API_KEY\|PASSWORD\|SECRET" || echo "Failed to get env vars"
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "5. LISTENING PORTS INSIDE CONTAINER"
+          echo "════════════════════════════════════════════════════════════════"
+          docker exec app-server-healthcare-assistant sh -c "netstat -tlnp 2>/dev/null || ss -tlnp 2>/dev/null || cat /proc/net/tcp" 2>&1 || echo "Failed to get ports"
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "6. PROCESSES INSIDE CONTAINER"
+          echo "════════════════════════════════════════════════════════════════"
+          docker exec app-server-healthcare-assistant ps aux 2>&1 || echo "Failed to get processes"
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "7. TEST VARIOUS ENDPOINTS ON PORT 8081"
+          echo "════════════════════════════════════════════════════════════════"
+          echo "--- Root path (/) ---"
+          curl -sv http://localhost:8081/ 2>&1 | head -50
+          echo ""
+          echo "--- /health ---"
+          curl -sv http://localhost:8081/health 2>&1 | head -20
+          echo ""
+          echo "--- /api ---"
+          curl -sv http://localhost:8081/api 2>&1 | head -20
+          echo ""
+          echo "--- /docs ---"
+          curl -sv http://localhost:8081/docs 2>&1 | head -20
+          echo ""
+          echo "--- /openapi.json ---"
+          curl -sv http://localhost:8081/openapi.json 2>&1 | head -50
+          echo ""
+          echo "--- /full-assistant ---"
+          curl -sv http://localhost:8081/full-assistant 2>&1 | head -20
+          echo ""
+          echo "--- /patient-intake ---"
+          curl -sv http://localhost:8081/patient-intake 2>&1 | head -20
+          echo ""
+          echo "--- /generate ---"
+          curl -sv http://localhost:8081/generate 2>&1 | head -20
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "8. DOCKER COMPOSE CONFIG (if available)"
+          echo "════════════════════════════════════════════════════════════════"
+          cat ambient-patient/agent/docker-compose.yaml 2>&1 || echo "docker-compose.yaml not found"
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "9. FILES IN CONTAINER /app DIRECTORY"
+          echo "════════════════════════════════════════════════════════════════"
+          docker exec app-server-healthcare-assistant ls -la /app 2>&1 || echo "Failed to list /app"
+          docker exec app-server-healthcare-assistant ls -la /app/src 2>&1 || echo "Failed to list /app/src"
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "10. HOST NETWORK - ALL LISTENING PORTS"
+          echo "════════════════════════════════════════════════════════════════"
+          ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || echo "Failed to get host ports"
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "DEBUG COMPLETE"
+          echo "════════════════════════════════════════════════════════════════"
+
       - name: Wait for Services Ready
         run: |
           echo "========================================"
           echo "  WAITING FOR SERVICES TO BE READY"
           echo "========================================"
           
-          MAX_ATTEMPTS=180
-          ATTEMPT=0
+          # Just wait a bit for services to stabilize after debug
+          sleep 30
           
-          # Wait for Gradio UI (port 8081) - this is what pytest actually tests
-          echo "Checking Gradio UI service (http://localhost:8081/full-assistant)..."
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            ATTEMPT=$((ATTEMPT + 1))
-            # Check for gradio-app element in the response
-            if curl -sf http://localhost:8081/full-assistant 2>/dev/null | grep -q "gradio"; then
-              echo "✓ Gradio UI is ready (attempt $ATTEMPT)"
-              break
-            fi
-            [ $((ATTEMPT % 10)) -eq 0 ] && echo "  Waiting... ($ATTEMPT/$MAX_ATTEMPTS)"
-            sleep 2
-          done
-          
-          if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-            echo "⚠ WARNING: Gradio UI not responding, showing debug info..."
-            echo "Container status:"
-            docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
-            echo ""
-            echo "app-server-healthcare-assistant logs (last 50 lines):"
-            docker logs --tail 50 app-server-healthcare-assistant 2>&1 || echo "Container not found"
-          fi
-          
-          # Wait for Voice UI (port 4400)
-          ATTEMPT=0
-          echo "Checking Voice UI service (http://localhost:4400)..."
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            ATTEMPT=$((ATTEMPT + 1))
-            if curl -sf -o /dev/null http://localhost:4400 2>/dev/null; then
-              echo "✓ Voice UI is ready (attempt $ATTEMPT)"
-              break
-            fi
-            [ $((ATTEMPT % 10)) -eq 0 ] && echo "  Waiting... ($ATTEMPT/$MAX_ATTEMPTS)"
-            sleep 2
-          done
-          
-          if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-            echo "⚠ WARNING: Voice UI not responding"
-          fi
-          
-          # Show container status
-          echo ""
+          # Show final container status
           echo "Docker containers status:"
-          docker ps -a --format "table {{.Names}}\t{{.Status}}"
+          docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
       # ==========================================
       # PHASE 5: Run pytest UI Tests
