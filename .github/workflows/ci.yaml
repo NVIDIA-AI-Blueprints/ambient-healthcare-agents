@@ -281,9 +281,9 @@ jobs:
       - name: Preprocess Notebook - Replace input() with env var
         run: |
           echo "Replacing input() calls with environment variable in notebook..."
-          # Replace input("Enter your NGC API key: ") with os.environ.get("NGC_API_KEY")
-          sed -i 's/input("Enter your NGC API key: ")/os.environ.get("NGC_API_KEY")/g' ambient-provider.ipynb
-          sed -i "s/input('Enter your NGC API key: ')/os.environ.get('NGC_API_KEY')/g" ambient-provider.ipynb
+          # Notebook is JSON format, quotes are escaped as \"
+          # Replace input(\"Enter your NGC API key: \") with os.environ.get(\"NGC_API_KEY\")
+          sed -i 's/input(\\"Enter your NGC API key: \\")/os.environ.get(\\"NGC_API_KEY\\")/g' ambient-provider.ipynb
           echo "✓ Notebook preprocessed"
 
       - name: Execute Notebook - Deploy Ambient Provider
@@ -518,9 +518,9 @@ jobs:
       - name: Preprocess Notebook - Replace input() with env var
         run: |
           echo "Replacing input() calls with environment variable in notebook..."
-          # Replace input("Enter your NGC API key: ") with os.environ.get("NGC_API_KEY")
-          sed -i 's/input("Enter your NGC API key: ")/os.environ.get("NGC_API_KEY")/g' ambient-patient.ipynb
-          sed -i "s/input('Enter your NGC API key: ')/os.environ.get('NGC_API_KEY')/g" ambient-patient.ipynb
+          # Notebook is JSON format, quotes are escaped as \"
+          # Replace input(\"Enter your NGC API key: \") with os.environ.get(\"NGC_API_KEY\")
+          sed -i 's/input(\\"Enter your NGC API key: \\")/os.environ.get(\\"NGC_API_KEY\\")/g' ambient-patient.ipynb
           echo "✓ Notebook preprocessed"
 
       - name: Execute Notebook - Deploy Ambient Patient
