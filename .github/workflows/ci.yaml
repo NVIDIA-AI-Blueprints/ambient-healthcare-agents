@@ -278,19 +278,6 @@ jobs:
       # ==========================================
       # PHASE 4: Execute Notebook (Deploy)
       # ==========================================
-      - name: Preprocess Notebook - Fix CI compatibility issues
-        env:
-          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
-        run: |
-          echo "Preprocessing ambient-provider.ipynb for CI environment..."
-          
-          # Fix 1: Cell 7 - Replace placeholder API key with env var reference
-          # Original: os.environ["NGC_API_KEY"] = "<your-api-key>"
-          # Fixed: os.environ["NGC_API_KEY"] = os.environ.get("NGC_API_KEY", "")
-          sed -i 's/<your-api-key>/'" + os.environ.get(\\\"NGC_API_KEY\\\", \\\"\\\")/g" ambient-provider.ipynb
-          
-          echo "✓ ambient-provider.ipynb preprocessed"
-
       - name: Execute Notebook - Deploy Ambient Provider
         env:
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
@@ -308,6 +295,7 @@ jobs:
           
           # Skip cells not compatible with CI environment:
           # - Cell 1: cd ~/ (home directory path)
+          # - Cell 7: Sets NGC_API_KEY to placeholder (we pass via -e instead)
           # - Cell 15, 16, 18: Brev-specific /ephemeral, daemon.json checks
           # - Cell 19: systemctl restart docker
           # - Cell 20: chmod /ephemeral
@@ -318,7 +306,7 @@ jobs:
             --timeout 3600 \
             --skip-deps-check \
             --skip-tags ci-skip \
-            --skip-cells 1 15 16 18 19 20 42 \
+            --skip-cells 1 7 15 16 18 19 20 42 \
             -e NGC_API_KEY="${NGC_API_KEY}" \
             -e NVIDIA_API_KEY="${NVIDIA_API_KEY}"
           
@@ -576,20 +564,30 @@ jobs:
           echo "  WAITING FOR SERVICES TO BE READY"
           echo "========================================"
           
-          MAX_ATTEMPTS=120
+          MAX_ATTEMPTS=180
           ATTEMPT=0
           
-          # Wait for Agent UI (port 8081)
-          echo "Checking Agent API service (http://localhost:8081)..."
+          # Wait for Gradio UI (port 8081) - this is what pytest actually tests
+          echo "Checking Gradio UI service (http://localhost:8081/full-assistant)..."
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             ATTEMPT=$((ATTEMPT + 1))
-            if curl -sf -o /dev/null http://localhost:8081/generate 2>/dev/null; then
-              echo "✓ Agent API is ready (attempt $ATTEMPT)"
+            # Check for gradio-app element in the response
+            if curl -sf http://localhost:8081/full-assistant 2>/dev/null | grep -q "gradio"; then
+              echo "✓ Gradio UI is ready (attempt $ATTEMPT)"
               break
             fi
             [ $((ATTEMPT % 10)) -eq 0 ] && echo "  Waiting... ($ATTEMPT/$MAX_ATTEMPTS)"
             sleep 2
           done
+          
+          if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+            echo "⚠ WARNING: Gradio UI not responding, showing debug info..."
+            echo "Container status:"
+            docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+            echo ""
+            echo "app-server-healthcare-assistant logs (last 50 lines):"
+            docker logs --tail 50 app-server-healthcare-assistant 2>&1 || echo "Container not found"
+          fi
           
           # Wait for Voice UI (port 4400)
           ATTEMPT=0
@@ -605,7 +603,7 @@ jobs:
           done
           
           if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-            echo "⚠ WARNING: Some services timeout, but continuing..."
+            echo "⚠ WARNING: Voice UI not responding"
           fi
           
           # Show container status
