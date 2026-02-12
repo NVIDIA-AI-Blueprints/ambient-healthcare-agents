@@ -44,7 +44,7 @@ on:
 env:
   TEST_IMAGE: nvcr.io/rw983xdqtcdp/auto_test_team/blueprint-github-test-image:latest
   QA_TESTER_REPO: https://github.com/bp-cicd-org/qa-tester.git
-  ENABLE_EMAIL_NOTIFICATION: false  # Set to false to disable email notifications
+  ENABLE_EMAIL_NOTIFICATION: true  # Set to false to disable email notifications
 
 jobs:
   # ============================================
