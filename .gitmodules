@@ -6,3 +6,6 @@
 	path = ambient-patient
 	url = https://github.com/NVIDIA-AI-Blueprints/ambient-patient.git
 	branch = main
+[submodule "voice-agent-examples"]
+	path = voice-agent-examples
+	url = https://github.com/MMSE-Assist/voice-agent-examples.git
