@@ -190,8 +190,7 @@ jobs:
     name: Ambient Provider - Deploy & Test
     needs: preflight
     if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_ambient_provider) }}
-    runs-on: arc-runner-set-oke-org-poc-4-gpu
-    # runs-on: arc-runners-org-nvidia-ai-bp-2-gpu
+    runs-on: arc-runner-set-oke-org-poc-5-gpu
     timeout-minutes: 180
     
     steps:
@@ -301,13 +300,14 @@ jobs:
           # - Cell 20: chmod /ephemeral
           # - Cell 42: Shell commands without ! prefix (SyntaxError)
           # - Cell 51: ngrok install/config without ! prefix (SyntaxError)
+          # - Cell 54, 57: make down (demo mode switching, stops running services unnecessarily)
           python notebook_runner_nbclient.py \
             -f ambient-provider.ipynb \
             --output-dir notebook_output \
             --timeout 3600 \
             --skip-deps-check \
             --skip-tags ci-skip \
-            --skip-cells 1 7 15 16 18 19 20 42 51 \
+            --skip-cells 1 7 15 16 18 19 20 42 51 54 57 \
             -e NGC_API_KEY="${NGC_API_KEY}" \
             -e NVIDIA_API_KEY="${NVIDIA_API_KEY}"
           
@@ -321,30 +321,47 @@ jobs:
           echo "========================================"
           echo "  WAITING FOR SERVICES TO BE READY"
           echo "========================================"
-          
-          MAX_ATTEMPTS=90
-          ATTEMPT=0
-          
-          # Wait for UI (port 5173)
-          echo "Checking UI service (http://localhost:5173)..."
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            ATTEMPT=$((ATTEMPT + 1))
-            if curl -sf -o /dev/null http://localhost:5173 2>/dev/null; then
-              echo "✓ UI is ready (attempt $ATTEMPT)"
-              break
-            fi
-            [ $((ATTEMPT % 10)) -eq 0 ] && echo "  Waiting... ($ATTEMPT/$MAX_ATTEMPTS)"
-            sleep 2
-          done
-          
-          if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-            echo "⚠ WARNING: UI service timeout, but continuing..."
-          fi
-          
-          # Show container status
+
+          wait_for_endpoint() {
+            local name="$1" url="$2" max_attempts="$3" attempt=0
+            echo "Checking $name ($url)..."
+            while [ $attempt -lt $max_attempts ]; do
+              attempt=$((attempt + 1))
+              if curl -sf -o /dev/null "$url" 2>/dev/null; then
+                echo "✓ $name is ready (attempt $attempt/$max_attempts)"
+                return 0
+              fi
+              [ $((attempt % 10)) -eq 0 ] && echo "  Waiting for $name... ($attempt/$max_attempts)"
+              sleep 10
+            done
+            echo "✗ FAILED: $name not ready after $max_attempts attempts"
+            return 1
+          }
+
+          FAILED=0
+
+          # Riva ASR health (NIM exposes HTTP health on 8001 by default for parakeet)
+          wait_for_endpoint "Riva ASR NIM" "http://localhost:8001/v1/health/ready" 120 || FAILED=1
+
+          # UI frontend
+          wait_for_endpoint "Provider UI" "http://localhost:5173" 60 || FAILED=1
+
+          # API backend
+          wait_for_endpoint "Provider API" "http://localhost:8000/docs" 60 || FAILED=1
+
           echo ""
           echo "Docker containers status:"
-          docker ps -a --format "table {{.Names}}\t{{.Status}}"
+          docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+          if [ $FAILED -ne 0 ]; then
+            echo ""
+            echo "✗ Some services failed to start. Showing container logs..."
+            for c in $(docker ps -a --format '{{.Names}}'); do
+              echo "=== LOGS: $c ==="
+              docker logs --tail 30 "$c" 2>&1 || true
+            done
+            exit 1
+          fi
 
       # ==========================================
       # PHASE 5: Run pytest UI Tests
@@ -416,8 +433,7 @@ jobs:
     name: Ambient Patient - Deploy & Test
     needs: preflight
     if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_ambient_patient) }}
-    runs-on: arc-runner-set-oke-org-poc-4-gpu
-    # runs-on: arc-runners-org-nvidia-ai-bp-8-gpu
+    runs-on: arc-runner-set-oke-org-poc-5-gpu
     timeout-minutes: 240
     
     steps:
@@ -494,7 +510,6 @@ jobs:
           # Create vars.env for ambient-patient agent
           mkdir -p ambient-patient/agent
           cat > ambient-patient/agent/vars.env <<EOF
-          # Auto-configured by GitHub Actions
           NVIDIA_API_KEY=${NVIDIA_API_KEY}
           NGC_API_KEY=${NGC_API_KEY}
           AGENT_LLM_BASE_URL=http://agent-instruct-llm:8000/v1
@@ -505,7 +520,6 @@ jobs:
           # Create ace_controller.env
           mkdir -p ambient-patient/ace-controller-voice-interface
           cat > ambient-patient/ace-controller-voice-interface/ace_controller.env <<EOF
-          # Auto-configured by GitHub Actions
           NVIDIA_API_KEY=${NVIDIA_API_KEY}
           NGC_API_KEY=${NGC_API_KEY}
           CONFIG_PATH=./configs/config_riva_public_endpoints.yaml
@@ -542,7 +556,9 @@ jobs:
           # Skip cells not compatible with CI environment:
           # - Cell 19, 20, 22: Brev-specific /ephemeral, daemon.json checks
           # - Cell 24: systemctl restart docker
+          # - Cell 27, 32: Hardcoded GPU IDs (6 GPUs) - CI overrides via -e for 5-GPU runner
           # - Cell 43+: API test calls (deployment is main goal, pytest does testing)
+          # - Cell 49-51, 54-59: Turn server setup (not needed for localhost CI)
           # - Cell 68, 70, 72: docker compose down / cleanup commands
           python notebook_runner_nbclient.py \
             -f ambient-patient.ipynb \
@@ -550,9 +566,12 @@ jobs:
             --timeout 3600 \
             --skip-deps-check \
             --skip-tags ci-skip \
-            --skip-cells 19 20 22 24 43 45 47 49 50 51 54 55 56 57 58 59 62 64 68 70 72 \
+            --skip-cells 19 20 22 24 27 32 43 45 47 49 50 51 54 55 56 57 58 59 68 70 72 \
             -e NGC_API_KEY="${NGC_API_KEY}" \
-            -e NVIDIA_API_KEY="${NVIDIA_API_KEY}"
+            -e NVIDIA_API_KEY="${NVIDIA_API_KEY}" \
+            -e AGENT_LLM_GPU_ID="0,1,2" \
+            -e NEMOGUARD_CONTENT_SAFETY_LLM_GPU_ID="3" \
+            -e NEMOGUARD_TOPIC_CONTROL_LLM_GPU_ID="4"
           
           echo ""
           echo "✓ Notebook execution completed"
@@ -665,13 +684,47 @@ jobs:
           echo "========================================"
           echo "  WAITING FOR SERVICES TO BE READY"
           echo "========================================"
-          
-          # Just wait a bit for services to stabilize after debug
-          sleep 30
-          
-          # Show final container status
+
+          wait_for_endpoint() {
+            local name="$1" url="$2" max_attempts="$3" attempt=0
+            echo "Checking $name ($url)..."
+            while [ $attempt -lt $max_attempts ]; do
+              attempt=$((attempt + 1))
+              if curl -sf -o /dev/null "$url" 2>/dev/null; then
+                echo "✓ $name is ready (attempt $attempt/$max_attempts)"
+                return 0
+              fi
+              [ $((attempt % 10)) -eq 0 ] && echo "  Waiting for $name... ($attempt/$max_attempts)"
+              sleep 10
+            done
+            echo "✗ FAILED: $name not ready after $max_attempts attempts"
+            return 1
+          }
+
+          FAILED=0
+
+          # Agent LLM NIM health
+          wait_for_endpoint "Agent LLM NIM" "http://localhost:8000/v1/health/ready" 180 || FAILED=1
+
+          # App server (Gradio agent UI)
+          wait_for_endpoint "Agent App Server" "http://localhost:8081" 90 || FAILED=1
+
+          # Voice UI (ace-controller WebRTC)
+          wait_for_endpoint "Voice UI" "http://localhost:4400" 90 || FAILED=1
+
+          echo ""
           echo "Docker containers status:"
           docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+          if [ $FAILED -ne 0 ]; then
+            echo ""
+            echo "✗ Some services failed to start. Showing container logs..."
+            for c in $(docker ps -a --format '{{.Names}}'); do
+              echo "=== LOGS: $c ==="
+              docker logs --tail 30 "$c" 2>&1 || true
+            done
+            exit 1
+          fi
 
       # ==========================================
       # PHASE 5: Run pytest UI Tests
