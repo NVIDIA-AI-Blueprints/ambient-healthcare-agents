@@ -303,7 +303,7 @@ jobs:
     name: Ambient Provider - Deploy & Test
     needs: preflight
     if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_ambient_provider) }}
-    runs-on: arc-runner-set-oke-org-poc-4-gpu
+    runs-on: arc-runners-org-nvidia-ai-bp-4-gpu
     timeout-minutes: 180
     
     steps:
