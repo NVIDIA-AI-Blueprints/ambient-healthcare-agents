@@ -1,23 +1,123 @@
 # =============================================================================
-# Ambient Healthcare Agents CI
+# Ambient Healthcare Agents CI — Cloud Mode
+# =============================================================================
+#
+# DEPLOYMENT STRATEGY: CLOUD MODE
+# --------------------------------
+# This workflow deploys ambient-provider and ambient-patient using NVIDIA's
+# cloud-hosted API endpoints instead of self-hosted NIM containers. This avoids
+# the need for large GPU memory to run local LLM/ASR/TTS/Guardrails models,
+# and significantly reduces deployment time in CI.
+#
+# What "cloud mode" means:
+#   - LLM inference via https://integrate.api.nvidia.com/v1 (no local NIM)
+#   - Riva ASR/TTS via grpc.nvcf.nvidia.com:443 (NVIDIA Cloud Functions)
+#   - NemoGuardrails uses cloud-hosted guardrail config (no local NIM)
+#   - Only the application services (API, UI, app-server, voice-UI) run locally
+#
+# SERVICES DEPLOYED (all are real, running containers):
+# --------------------------------
+# Ambient Provider:
+#   - API backend  (FastAPI)          → localhost:8000  (health: /api/health/)
+#   - UI frontend  (Vite/React)      → localhost:5173
+#     Deployed by: `make dev` (notebook cell 40)
+#     Compose file: infra/compose.dev.yml (no --profile riva-nim)
+#
+# Ambient Patient:
+#   - app-server   (FastAPI chain_server) → localhost:8081 (readiness: GET /health per agent/chain_server/chain_server.py)
+#     Deployed by: docker compose up app-server (notebook cell 39)
+#   - python-app   (ACE controller)  → localhost:7860
+#   - ui-app       (Voice WebRTC UI) → localhost:4400
+#     Deployed by: docker compose --profile ace-controller up (notebook cell 62)
+#
+# PYTEST TESTS (run against live services):
+# --------------------------------
+#   - pytest -m "ambient_provider and ui"    → tests Provider UI at localhost:5173
+#   - pytest -m "ambient_patient_agent and ui" → tests Agent UI at localhost:8081
+#   - pytest -m "ambient_patient_voice and ui" → tests Voice UI at localhost:4400
+#
+# NOTEBOOK CELLS — WHAT RUNS vs WHAT IS SKIPPED:
+# --------------------------------
+# ambient-provider.ipynb (skip-cells: 1 7 15 16 18 19 20 38 42 51 54 55 57 58)
+#   RUNS:
+#     Cell  2    git submodule update --init
+#     Cell  9    docker -v (verify Docker)
+#     Cell 11    nvidia-smi via Docker (verify GPU access)
+#     Cell 13    docker login nvcr.io (NGC auth)
+#     Cell 23-26 Install uv, Python deps, portaudio
+#     Cell 27    cd ambient-scribe
+#     Cell 30-33 Node.js check + make bootstrap (npm install)
+#     Cell 39    Health check for LLM/Riva (try/except, won't fail in cloud mode)
+#     Cell 40    make dev  ← CORE: deploys API + UI
+#     Cell 48    docker ps | grep parakeet (informational)
+#   SKIPPED:
+#     Cell  1    %cd ~/ (wrong path in CI)
+#     Cell  7    Hardcoded NGC_API_KEY placeholder (CI passes via -e)
+#     Cell 15,16,18,19,20  Brev-platform: daemon.json, systemctl, /ephemeral
+#     Cell 38    make dev-nim ← SKIP: local NIM (cloud mode replaces this)
+#     Cell 42    Shell commands missing ! prefix (SyntaxError)
+#     Cell 51    ngrok install (not needed in CI)
+#     Cell 54,57 make down (would stop running services)
+#     Cell 55,58 Redundant make dev (would restart services)
+#
+# ambient-patient.ipynb (skip-cells: 19 20 22 24 27 28 32 34 43 45 47 49-51 54-59 68 70 72)
+#   RUNS:
+#     Cell  3-4  pwd, git submodule update
+#     Cell  6    NGC_API_KEY setup
+#     Cell  9    cd ambient-patient
+#     Cell 10    Check vars.env contents (verify config)
+#     Cell 13,15 Check ace_controller.env contents (verify config)
+#     Cell 29    docker ps (verify container status)
+#     Cell 35    docker ps (verify container status)
+#     Cell 39    docker compose up app-server  ← CORE: deploys agent app
+#     Cell 41    docker ps (verify app-server running)
+#     Cell 62    docker compose --profile ace-controller up  ← CORE: deploys Voice UI
+#     Cell 64    docker ps (verify Voice UI running)
+#   SKIPPED:
+#     Cell 19,20,22,24  Brev-platform: daemon.json, systemctl
+#     Cell 27    GPU IDs for LLM NIM (cloud mode, no local NIM)
+#     Cell 28    Deploy agent-instruct-llm NIM ← SKIP: cloud mode replaces this
+#     Cell 32    GPU IDs for NemoGuard NIMs (cloud mode, no local NIM)
+#     Cell 34    Deploy NemoGuard NIM containers ← SKIP: cloud mode replaces this
+#     Cell 43,45,47  Manual API test calls (pytest handles testing)
+#     Cell 49-51,54-59  Turn server / ngrok / config.ts (not needed in CI)
+#     Cell 68,70,72  docker compose down / cleanup (would stop services)
+#
+# CI-SPECIFIC PATCHES:
+# --------------------------------
+# 1. validate-env.sh is patched to skip RIVA TCP connectivity test.
+#    The upstream script exits if it cannot reach RIVA_URI via /dev/tcp, which
+#    fails on restricted ARC runners. Since we use cloud RIVA (grpc.nvcf.nvidia.com),
+#    TCP probing is unnecessary — the API handles connection at runtime.
+#
+# 2. A "fallback deploy" step runs after each notebook. Jupyter `!command` and
+#    `try/except subprocess.run(check=True)` patterns do NOT propagate errors to
+#    nbclient, so `make dev` or `docker compose up` failures are invisible to the
+#    notebook runner. The fallback step checks if containers are actually running
+#    and re-deploys if not.
+#
+# WORKFLOW STRUCTURE:
+# --------------------------------
+# 1. preflight      → Verify secrets, test image, notebooks, submodules, qa-tester
+# 2. ambient-provider → Preflight GPU/Docker → Patch scripts → Deploy via notebook
+#                       → Fallback deploy → Health check → Pytest
+# 3. ambient-patient  → Preflight GPU/Docker → Deploy via notebook
+#                       → Fallback deploy → Health check → Pytest
+# 4. summary        → Aggregate results, send email notification
+#
 # =============================================================================
 #
 # Required Secrets:
-#   - NGC_API_KEY          : NVIDIA NGC API Key for container registry access
-#   - NVIDIA_API_KEY       : NVIDIA API Key for hosted NIM services
-#   - SMTP_USERNAME        : Gmail address for sending notification emails
-#   - SMTP_PASSWORD        : Gmail app-specific password for SMTP
+#   - NGC_API_KEY            : NVIDIA NGC API Key for application images (compose / notebooks)
+#   - TEST_DOCKER_PULL_KEY   : NGC nvcr.io PAT for pulling TEST_IMAGE only (can match NGC_API_KEY if one key has both scopes)
+#   - NVIDIA_API_KEY         : NVIDIA API Key for hosted NIM services
+#   - SMTP_USERNAME          : Gmail address for sending notification emails
+#   - SMTP_PASSWORD          : Gmail app-specific password for SMTP
 #
 # pytest markers:
 #   - ambient-provider: ambient_provider and ui
 #   - ambient-patient:  ambient_patient_agent and ui
 #   - ambient-patient:  ambient_patient_voice and ui
-#
-# -----------------------------------------------------------------------------
-# Notebook → HTML Mapping (for pytest)
-# -----------------------------------------------------------------------------
-# This project only has UI tests, no notebook tests.
-# No HTML mapping is required - notebooks are used for deployment only.
 #
 # =============================================================================
 
@@ -62,18 +162,19 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Docker Login to NGC
+      - name: Docker Login for test image (nvcr.io)
         env:
-          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
+          TEST_DOCKER_PULL_KEY: ${{ secrets.TEST_DOCKER_PULL_KEY }}
         run: |
-          echo "${NGC_API_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
-          echo "✓ NGC Docker login successful"
+          echo "${TEST_DOCKER_PULL_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
+          echo "✓ nvcr.io login successful (TEST_DOCKER_PULL_KEY)"
 
       - name: Preflight Checks
         id: preflight
         env:
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          TEST_DOCKER_PULL_KEY: ${{ secrets.TEST_DOCKER_PULL_KEY }}
         run: |
           echo "========================================"
           echo "  PREFLIGHT CHECKS"
@@ -84,7 +185,7 @@ jobs:
           
           # Check 1: NGC API Key
           echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 1/6] NGC API Key                      │"
+          echo "│ [Check 1/7] NGC API Key                      │"
           echo "└──────────────────────────────────────────────┘"
           if [ -z "${NGC_API_KEY}" ]; then
             echo "✗ ERROR: NGC_API_KEY is not set"
@@ -96,7 +197,7 @@ jobs:
           
           # Check 2: NVIDIA API Key
           echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 2/6] NVIDIA API Key                   │"
+          echo "│ [Check 2/7] NVIDIA API Key                   │"
           echo "└──────────────────────────────────────────────┘"
           if [ -z "${NVIDIA_API_KEY}" ]; then
             echo "✗ ERROR: NVIDIA_API_KEY is not set"
@@ -106,9 +207,21 @@ jobs:
           fi
           echo ""
           
-          # Check 3: Test Image can be pulled
+          # Check 3: Test image registry key (used for docker login before Check 4)
           echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 3/6] Test Image                       │"
+          echo "│ [Check 3/7] TEST_DOCKER_PULL_KEY             │"
+          echo "└──────────────────────────────────────────────┘"
+          if [ -z "${TEST_DOCKER_PULL_KEY}" ]; then
+            echo "✗ ERROR: TEST_DOCKER_PULL_KEY is not set"
+            FAILED=1
+          else
+            echo "✓ TEST_DOCKER_PULL_KEY is set"
+          fi
+          echo ""
+          
+          # Check 4: Test Image can be pulled
+          echo "┌──────────────────────────────────────────────┐"
+          echo "│ [Check 4/7] Test Image                       │"
           echo "└──────────────────────────────────────────────┘"
           echo "Pulling test image: ${{ env.TEST_IMAGE }}"
           if docker pull ${{ env.TEST_IMAGE }}; then
@@ -119,9 +232,9 @@ jobs:
           fi
           echo ""
           
-          # Check 4: Required notebooks exist
+          # Check 5: Required notebooks exist
           echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 4/6] Required Notebooks               │"
+          echo "│ [Check 5/7] Required Notebooks               │"
           echo "└──────────────────────────────────────────────┘"
           if [ -f "ambient-provider.ipynb" ]; then
             echo "✓ ambient-provider.ipynb exists"
@@ -137,9 +250,9 @@ jobs:
           fi
           echo ""
           
-          # Check 5: Submodules
+          # Check 6: Submodules
           echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 5/6] Git Submodules                   │"
+          echo "│ [Check 6/7] Git Submodules                   │"
           echo "└──────────────────────────────────────────────┘"
           if [ -d "ambient-provider" ] && [ "$(ls -A ambient-provider 2>/dev/null)" ]; then
             echo "✓ ambient-provider submodule is initialized"
@@ -153,9 +266,9 @@ jobs:
           fi
           echo ""
           
-          # Check 6: Clone qa-tester repository
+          # Check 7: Clone qa-tester repository
           echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 6/6] QA Tester Repository             │"
+          echo "│ [Check 7/7] QA Tester Repository             │"
           echo "└──────────────────────────────────────────────┘"
           echo "Cloning qa-tester repository..."
           if git clone --depth 1 https://x-access-token:${{ github.token }}@github.com/bp-cicd-org/qa-tester.git _qa_tester; then
@@ -191,7 +304,6 @@ jobs:
     needs: preflight
     if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_ambient_provider) }}
     runs-on: arc-runner-set-oke-org-poc-4-gpu
-    # runs-on: arc-runners-org-nvidia-ai-bp-2-gpu
     timeout-minutes: 180
     
     steps:
@@ -201,37 +313,85 @@ jobs:
           submodules: recursive
 
       # ==========================================
-      # PHASE 1: Environment Setup
+      # PHASE 0: Preflight - fail fast if environment is broken
       # ==========================================
-      - name: Setup Environment
+      - name: Preflight - GPU & Docker Check
         run: |
           echo "========================================"
-          echo "  AMBIENT PROVIDER - ENVIRONMENT SETUP"
+          echo "  PREFLIGHT: GPU & DOCKER CHECKS"
           echo "========================================"
-          
-          # System info
+          FAIL=0
+
+          echo "--- System ---"
           echo "Runner: $(hostname)"
           echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
-          echo "Docker: $(docker --version)"
-          echo ""
-          
-          # GPU info
-          echo "GPU Information:"
-          nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader || echo "nvidia-smi not available"
           echo ""
 
-      - name: Docker Login to NGC
+          echo "--- Docker ---"
+          if ! docker --version; then
+            echo "✗ FATAL: Docker not available"; FAIL=1
+          else
+            echo "✓ Docker OK"
+          fi
+          echo ""
+
+          echo "--- NVIDIA GPU Access ---"
+          if nvidia-smi 2>/dev/null; then
+            GPU_COUNT=$(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)
+            echo "✓ GPU count (host): $GPU_COUNT"
+            nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv,noheader
+          else
+            echo "nvidia-smi not on host PATH (common for ARC/K8s runners), checking via Docker..."
+            if docker run --rm --gpus all nvidia/cuda:12.6.3-base-ubuntu24.04 nvidia-smi 2>&1; then
+              echo "✓ GPUs accessible via Docker NVIDIA runtime"
+            else
+              echo "✗ FATAL: Cannot access GPUs — neither host nvidia-smi nor Docker --gpus works"; FAIL=1
+            fi
+          fi
+          echo ""
+
+          echo "--- Docker NVIDIA Runtime ---"
+          if docker info 2>/dev/null | grep -q "nvidia"; then
+            echo "✓ NVIDIA Docker runtime available"
+          else
+            echo "⚠ WARNING: NVIDIA runtime not shown in docker info"
+          fi
+          echo ""
+
+          echo "--- Disk Space ---"
+          df -h / | tail -1
+          AVAIL_GB=$(df --output=avail / | tail -1 | awk '{print int($1/1024/1024)}')
+          echo "Available: ${AVAIL_GB}GB"
+          if [ "$AVAIL_GB" -lt 20 ]; then
+            echo "✗ FATAL: Less than 20GB disk space available"; FAIL=1
+          else
+            echo "✓ Disk space OK"
+          fi
+          echo ""
+
+          echo "--- Existing Containers (stale?) ---"
+          docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" 2>/dev/null || true
+          echo ""
+
+          if [ $FAIL -ne 0 ]; then
+            echo "✗ PREFLIGHT FAILED — aborting to save time"
+            exit 1
+          fi
+          echo "✓ All preflight checks passed"
+
+      # ==========================================
+      # PHASE 1: Environment Setup
+      # ==========================================
+      - name: Pull test image then Docker Login to NGC
         env:
+          TEST_DOCKER_PULL_KEY: ${{ secrets.TEST_DOCKER_PULL_KEY }}
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
         run: |
-          echo "${NGC_API_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
-          echo "✓ NGC Docker login successful"
-
-      - name: Pull Test Image
-        run: |
+          echo "${TEST_DOCKER_PULL_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
           echo "Pulling test image: ${{ env.TEST_IMAGE }}"
           docker pull ${{ env.TEST_IMAGE }}
-          echo "✓ Test image pulled successfully"
+          echo "${NGC_API_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
+          echo "✓ Test image pulled; NGC login active for application images"
 
       # ==========================================
       # PHASE 2: Setup Notebook Runner
@@ -265,15 +425,61 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
         run: |
-          # Create .env file for ambient-provider
+          # Create .env for cloud mode — no local NIM, use NVIDIA hosted APIs
           mkdir -p ambient-provider/ambient-scribe/apps/api
-          cat > ambient-provider/ambient-scribe/apps/api/.env <<EOF
-          # Auto-configured by GitHub Actions
-          NVIDIA_API_KEY=${NVIDIA_API_KEY}
-          NGC_API_KEY=${NGC_API_KEY}
-          RIVA_URI=parakeet-nim:50051
-          EOF
-          echo "✓ API environment pre-configured"
+          {
+            echo "NVIDIA_API_KEY=${NVIDIA_API_KEY}"
+            echo "SELF_HOSTED=false"
+            echo "OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1"
+            echo "LLM_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1"
+            echo "RIVA_FUNCTION_ID=1598d209-5e27-4d3c-8079-4751568b1081"
+            echo "RIVA_URI=grpc.nvcf.nvidia.com:443"
+            echo "RIVA_MODEL=parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer"
+            echo "RIVA_LANGUAGE=en-US"
+            echo "ENABLE_SPEAKER_DIARIZATION=true"
+            echo "ENABLE_STREAMING=true"
+            echo "STREAMING_CHUNK_SIZE=1600"
+            echo "STORAGE_BACKEND=local"
+            echo "UPLOAD_DIR=./uploads"
+            echo "TEMPLATES_DIR=./templates"
+          } > ambient-provider/ambient-scribe/apps/api/.env
+
+          # UI env file is also required by compose.dev.yml (env_file: ../apps/ui/.env).
+          # bootstrap.sh normally creates it, but if bootstrap fails silently in the
+          # notebook, docker compose up will fail due to missing env_file.
+          mkdir -p ambient-provider/ambient-scribe/apps/ui
+          if [ ! -f "ambient-provider/ambient-scribe/apps/ui/.env" ]; then
+            echo "VITE_USE_STREAMING=true" > ambient-provider/ambient-scribe/apps/ui/.env
+          fi
+
+          echo "✓ API + UI environment pre-configured (cloud mode)"
+          echo "  API .env contents (keys only):"
+          grep -oP '^[A-Z_]+' ambient-provider/ambient-scribe/apps/api/.env || true
+
+      # ==========================================
+      # PHASE 3.5: Patch submodule scripts for CI cloud mode
+      # ==========================================
+      - name: Patch validate-env for CI
+        run: |
+          # The upstream validate-env.sh tests TCP connectivity to RIVA_URI.
+          # In cloud mode (grpc.nvcf.nvidia.com:443) this can fail on restricted
+          # runners, silently blocking `make dev`. Replace with a CI-safe version
+          # that only checks the .env file exists and has a real API key.
+          {
+            echo '#!/bin/bash'
+            echo 'echo "Validating environment configuration (CI cloud mode)..."'
+            echo 'ENV_FILE="apps/api/.env"'
+            echo 'if [ ! -f "$ENV_FILE" ]; then'
+            echo '  echo "ERROR: .env file not found at $ENV_FILE"; exit 1'
+            echo 'fi'
+            echo 'if grep -q "your_nvidia_api_key_here" "$ENV_FILE"; then'
+            echo '  echo "ERROR: NVIDIA_API_KEY is still a placeholder"; exit 1'
+            echo 'fi'
+            echo 'echo "RIVA URI: $(grep RIVA_URI= $ENV_FILE | cut -d= -f2)"'
+            echo 'echo "Environment validation complete (RIVA check skipped in CI)!"'
+          } > ambient-provider/ambient-scribe/scripts/validate-env.sh
+          chmod +x ambient-provider/ambient-scribe/scripts/validate-env.sh
+          echo "✓ validate-env.sh patched for CI cloud mode"
 
       # ==========================================
       # PHASE 4: Execute Notebook (Deploy)
@@ -293,21 +499,24 @@ jobs:
           
           COMMIT_SHA=$(git rev-parse --short=7 HEAD)
           
-          # Skip cells not compatible with CI environment:
+          # Cloud mode: skip NIM deployment cells, only run make dev (no NIM)
           # - Cell 1: cd ~/ (home directory path)
-          # - Cell 7: Sets NGC_API_KEY to placeholder (we pass via -e instead)
-          # - Cell 15, 16, 18: Brev-specific /ephemeral, daemon.json checks
+          # - Cell 7: Sets NGC_API_KEY to placeholder
+          # - Cell 15, 16, 18: Brev-specific checks
           # - Cell 19: systemctl restart docker
           # - Cell 20: chmod /ephemeral
+          # - Cell 38: make dev-nim (SKIP — cloud mode, no local NIM)
           # - Cell 42: Shell commands without ! prefix (SyntaxError)
           # - Cell 51: ngrok install/config without ! prefix (SyntaxError)
+          # - Cell 54, 57: make down (stops running services)
+          # - Cell 55, 58: extra make dev calls (avoid service restarts)
           python notebook_runner_nbclient.py \
             -f ambient-provider.ipynb \
             --output-dir notebook_output \
             --timeout 3600 \
             --skip-deps-check \
             --skip-tags ci-skip \
-            --skip-cells 1 7 15 16 18 19 20 42 51 \
+            --skip-cells 1 7 15 16 18 19 20 38 42 51 54 55 57 58 \
             -e NGC_API_KEY="${NGC_API_KEY}" \
             -e NVIDIA_API_KEY="${NVIDIA_API_KEY}"
           
@@ -316,35 +525,111 @@ jobs:
           echo "Generated files:"
           ls -la notebook_output/
 
+      - name: Ensure Services Running (fallback)
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
+        run: |
+          # Notebook shell cells (!command) do NOT propagate non-zero exit codes
+          # to nbclient, so `make dev` could fail silently. This step ensures
+          # containers are actually running, and deploys them if not.
+          cd ambient-provider/ambient-scribe
+
+          RUNNING=$(docker ps --format '{{.Names}}' 2>/dev/null | wc -l)
+          echo "Containers currently running: $RUNNING"
+
+          if [ "$RUNNING" -lt 2 ]; then
+            echo "⚠ Expected at least 2 containers (api + ui), found $RUNNING"
+            echo "  Deploying services directly..."
+            docker compose -f infra/compose.dev.yml up --build -d
+            echo "✓ Services deployed via fallback"
+          else
+            echo "✓ Services already running from notebook"
+          fi
+
+          echo ""
+          echo "All containers:"
+          docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+
+      - name: Debug - Container Status After Notebook
+        run: |
+          echo "========================================"
+          echo "  DEBUG: POST-NOTEBOOK CONTAINER STATUS"
+          echo "========================================"
+          echo ""
+          echo "=== All containers ==="
+          docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+          echo ""
+          echo "=== Docker networks ==="
+          docker network ls
+          echo ""
+          echo "=== Listening ports on host ==="
+          ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || echo "ss/netstat not available"
+          echo ""
+          echo "=== Docker compose services (if available) ==="
+          cd ambient-provider/ambient-scribe 2>/dev/null && docker compose -f infra/compose.dev.yml --profile riva-nim ps 2>&1 || echo "compose ps not available"
+          cd /home/runner/work/ambient-healthcare-agents/ambient-healthcare-agents 2>/dev/null || true
+          echo ""
+          echo "=== Container logs (last 50 lines each) ==="
+          for c in $(docker ps -a --format '{{.Names}}'); do
+            echo ""
+            echo "════════════════════════════════════════"
+            echo "CONTAINER: $c"
+            echo "════════════════════════════════════════"
+            docker inspect "$c" --format 'Image: {{.Config.Image}} | Status: {{.State.Status}} | Health: {{if .State.Health}}{{.State.Health.Status}}{{else}}N/A{{end}} | Restarts: {{.RestartCount}}' 2>/dev/null || true
+            docker logs --tail 50 "$c" 2>&1 || true
+          done
+          echo ""
+          echo "=== GPU status ==="
+          nvidia-smi 2>/dev/null || docker run --rm --gpus all nvidia/cuda:12.6.3-base-ubuntu24.04 nvidia-smi 2>/dev/null || echo "GPU status not available"
+
       - name: Wait for Services Ready
         run: |
           echo "========================================"
           echo "  WAITING FOR SERVICES TO BE READY"
           echo "========================================"
-          
-          MAX_ATTEMPTS=90
-          ATTEMPT=0
-          
-          # Wait for UI (port 5173)
-          echo "Checking UI service (http://localhost:5173)..."
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            ATTEMPT=$((ATTEMPT + 1))
-            if curl -sf -o /dev/null http://localhost:5173 2>/dev/null; then
-              echo "✓ UI is ready (attempt $ATTEMPT)"
-              break
-            fi
-            [ $((ATTEMPT % 10)) -eq 0 ] && echo "  Waiting... ($ATTEMPT/$MAX_ATTEMPTS)"
-            sleep 2
-          done
-          
-          if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-            echo "⚠ WARNING: UI service timeout, but continuing..."
-          fi
-          
-          # Show container status
+
+          wait_for_endpoint() {
+            local name="$1" url="$2" max_attempts="$3" attempt=0
+            echo "Checking $name ($url)..."
+            while [ $attempt -lt $max_attempts ]; do
+              attempt=$((attempt + 1))
+              if curl -sf -o /dev/null "$url" 2>/dev/null; then
+                echo "✓ $name is ready (attempt $attempt/$max_attempts)"
+                return 0
+              fi
+              if [ $((attempt % 10)) -eq 0 ]; then
+                echo "  Waiting for $name... ($attempt/$max_attempts)"
+                echo "  Container status:"
+                docker ps -a --format "  {{.Names}}: {{.Status}}" 2>/dev/null | head -10
+              fi
+              sleep 10
+            done
+            echo "✗ FAILED: $name not ready after $max_attempts attempts"
+            echo "  Container logs for debugging:"
+            for c in $(docker ps -a --format '{{.Names}}'); do
+              echo "  === $c ==="
+              docker logs --tail 20 "$c" 2>&1 | head -20 || true
+            done
+            return 1
+          }
+
+          FAILED=0
+
+          # Cloud mode: no local NIM containers, only check API + UI
+          # UI frontend
+          wait_for_endpoint "Provider UI" "http://localhost:5173" 60 || FAILED=1
+
+          # API backend — health endpoint is at /api/health/ (not /docs)
+          wait_for_endpoint "Provider API" "http://localhost:8000/api/health/" 60 || FAILED=1
+
           echo ""
-          echo "Docker containers status:"
-          docker ps -a --format "table {{.Names}}\t{{.Status}}"
+          echo "Final Docker containers status:"
+          docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+          if [ $FAILED -ne 0 ]; then
+            exit 1
+          fi
 
       # ==========================================
       # PHASE 5: Run pytest UI Tests
@@ -416,8 +701,7 @@ jobs:
     name: Ambient Patient - Deploy & Test
     needs: preflight
     if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_ambient_patient) }}
-    runs-on: arc-runner-set-oke-org-poc-4-gpu
-    # runs-on: arc-runners-org-nvidia-ai-bp-8-gpu
+    runs-on: arc-runner-set-oke-org-poc-5-gpu
     timeout-minutes: 240
     
     steps:
@@ -427,37 +711,88 @@ jobs:
           submodules: recursive
 
       # ==========================================
-      # PHASE 1: Environment Setup
+      # PHASE 0: Preflight - fail fast if environment is broken
       # ==========================================
-      - name: Setup Environment
+      - name: Preflight - GPU & Docker Check
         run: |
           echo "========================================"
-          echo "  AMBIENT PATIENT - ENVIRONMENT SETUP"
+          echo "  PREFLIGHT: GPU & DOCKER CHECKS"
           echo "========================================"
-          
-          # System info
+          FAIL=0
+
+          echo "--- System ---"
           echo "Runner: $(hostname)"
           echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
-          echo "Docker: $(docker --version)"
-          echo ""
-          
-          # GPU info
-          echo "GPU Information:"
-          nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader || echo "nvidia-smi not available"
           echo ""
 
-      - name: Docker Login to NGC
+          echo "--- Docker ---"
+          if ! docker --version; then
+            echo "✗ FATAL: Docker not available"; FAIL=1
+          else
+            echo "✓ Docker OK"
+          fi
+          echo ""
+
+          echo "--- NVIDIA GPU Access ---"
+          if nvidia-smi 2>/dev/null; then
+            GPU_COUNT=$(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)
+            echo "✓ GPU count (host): $GPU_COUNT"
+            if [ "$GPU_COUNT" -lt 4 ]; then
+              echo "✗ FATAL: Need at least 4 GPUs for ambient-patient, found $GPU_COUNT"; FAIL=1
+            fi
+            nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv,noheader
+          else
+            echo "nvidia-smi not on host PATH (common for ARC/K8s runners), checking via Docker..."
+            if docker run --rm --gpus all nvidia/cuda:12.6.3-base-ubuntu24.04 nvidia-smi 2>&1; then
+              echo "✓ GPUs accessible via Docker NVIDIA runtime"
+            else
+              echo "✗ FATAL: Cannot access GPUs — neither host nvidia-smi nor Docker --gpus works"; FAIL=1
+            fi
+          fi
+          echo ""
+
+          echo "--- Docker NVIDIA Runtime ---"
+          if docker info 2>/dev/null | grep -q "nvidia"; then
+            echo "✓ NVIDIA Docker runtime available"
+          else
+            echo "⚠ WARNING: NVIDIA runtime not shown in docker info"
+          fi
+          echo ""
+
+          echo "--- Disk Space ---"
+          df -h / | tail -1
+          AVAIL_GB=$(df --output=avail / | tail -1 | awk '{print int($1/1024/1024)}')
+          echo "Available: ${AVAIL_GB}GB"
+          if [ "$AVAIL_GB" -lt 20 ]; then
+            echo "✗ FATAL: Less than 20GB disk space available"; FAIL=1
+          else
+            echo "✓ Disk space OK"
+          fi
+          echo ""
+
+          echo "--- Existing Containers (stale?) ---"
+          docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" 2>/dev/null || true
+          echo ""
+
+          if [ $FAIL -ne 0 ]; then
+            echo "✗ PREFLIGHT FAILED — aborting to save time"
+            exit 1
+          fi
+          echo "✓ All preflight checks passed"
+
+      # ==========================================
+      # PHASE 1: Environment Setup
+      # ==========================================
+      - name: Pull test image then Docker Login to NGC
         env:
+          TEST_DOCKER_PULL_KEY: ${{ secrets.TEST_DOCKER_PULL_KEY }}
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
         run: |
-          echo "${NGC_API_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
-          echo "✓ NGC Docker login successful"
-
-      - name: Pull Test Image
-        run: |
+          echo "${TEST_DOCKER_PULL_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
           echo "Pulling test image: ${{ env.TEST_IMAGE }}"
           docker pull ${{ env.TEST_IMAGE }}
-          echo "✓ Test image pulled successfully"
+          echo "${NGC_API_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
+          echo "✓ Test image pulled; NGC login active for application images"
 
       # ==========================================
       # PHASE 2: Setup Notebook Runner
@@ -491,27 +826,26 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
         run: |
-          # Create vars.env for ambient-patient agent
+          # Cloud mode: use NVIDIA hosted APIs, no local NIM containers
           mkdir -p ambient-patient/agent
-          cat > ambient-patient/agent/vars.env <<EOF
-          # Auto-configured by GitHub Actions
-          NVIDIA_API_KEY=${NVIDIA_API_KEY}
-          NGC_API_KEY=${NGC_API_KEY}
-          AGENT_LLM_BASE_URL=http://agent-instruct-llm:8000/v1
-          AGENT_LLM_MODEL=meta/llama-3.3-70b-instruct
-          NEMO_GUARDRAILS_CONFIG_PATH=nmgr-config-store/patient-intake-nemoguard-self-hosted-nim
-          EOF
-          
-          # Create ace_controller.env
+          {
+            echo "NVIDIA_API_KEY=${NVIDIA_API_KEY}"
+            echo "NGC_API_KEY=${NGC_API_KEY}"
+            echo "AGENT_LLM_BASE_URL=https://integrate.api.nvidia.com/v1"
+            echo "AGENT_LLM_MODEL=meta/llama-3.3-70b-instruct"
+            echo "NEMO_GUARDRAILS_CONFIG_PATH=nmgr-config-store/patient-intake-nemoguard"
+            echo "LOG_LEVEL=INFO"
+          } > ambient-patient/agent/vars.env
+
+          # Create ace_controller.env (uses public Riva endpoints)
           mkdir -p ambient-patient/ace-controller-voice-interface
-          cat > ambient-patient/ace-controller-voice-interface/ace_controller.env <<EOF
-          # Auto-configured by GitHub Actions
-          NVIDIA_API_KEY=${NVIDIA_API_KEY}
-          NGC_API_KEY=${NGC_API_KEY}
-          CONFIG_PATH=./configs/config_riva_public_endpoints.yaml
-          EOF
-          
-          echo "✓ API environment pre-configured"
+          {
+            echo "NVIDIA_API_KEY=${NVIDIA_API_KEY}"
+            echo "NGC_API_KEY=${NGC_API_KEY}"
+            echo "CONFIG_PATH=./configs/config_riva_public_endpoints.yaml"
+          } > ambient-patient/ace-controller-voice-interface/ace_controller.env
+
+          echo "✓ API environment pre-configured (cloud mode)"
 
       # ==========================================
       # PHASE 4: Execute Notebook (Deploy)
@@ -539,10 +873,15 @@ jobs:
           
           COMMIT_SHA=$(git rev-parse --short=7 HEAD)
           
-          # Skip cells not compatible with CI environment:
+          # Cloud mode: skip ALL NIM deployment cells, no GPU needed
           # - Cell 19, 20, 22: Brev-specific /ephemeral, daemon.json checks
           # - Cell 24: systemctl restart docker
-          # - Cell 43+: API test calls (deployment is main goal, pytest does testing)
+          # - Cell 27: GPU IDs for LLM NIM (cloud mode, no local NIM)
+          # - Cell 28: Deploy agent-instruct-llm NIM container (cloud mode)
+          # - Cell 32: GPU IDs for NemoGuard NIMs (cloud mode)
+          # - Cell 34: Deploy NemoGuard NIM containers (cloud mode)
+          # - Cell 43+: API test calls (pytest does testing)
+          # - Cell 49-51, 54-59: Turn server setup (not needed for localhost CI)
           # - Cell 68, 70, 72: docker compose down / cleanup commands
           python notebook_runner_nbclient.py \
             -f ambient-patient.ipynb \
@@ -550,7 +889,7 @@ jobs:
             --timeout 3600 \
             --skip-deps-check \
             --skip-tags ci-skip \
-            --skip-cells 19 20 22 24 43 45 47 49 50 51 54 55 56 57 58 59 62 64 68 70 72 \
+            --skip-cells 19 20 22 24 27 28 32 34 43 45 47 49 50 51 54 55 56 57 58 59 68 70 72 \
             -e NGC_API_KEY="${NGC_API_KEY}" \
             -e NVIDIA_API_KEY="${NVIDIA_API_KEY}"
           
@@ -558,6 +897,39 @@ jobs:
           echo "✓ Notebook execution completed"
           echo "Generated files:"
           ls -la notebook_output/
+
+      - name: Ensure Services Running (fallback)
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
+        run: |
+          # Notebook cells use try/except around subprocess.run, so deploy
+          # failures are caught and printed but don't propagate to nbclient.
+          # This step verifies containers are running and deploys if not.
+          cd ambient-patient
+
+          echo "=== Checking app-server ==="
+          if docker ps --format '{{.Names}}' | grep -q "app-server-healthcare-assistant"; then
+            echo "✓ app-server is running"
+          else
+            echo "⚠ app-server not running — deploying via fallback..."
+            docker compose -f agent/docker-compose.yaml up --build -d app-server
+            echo "✓ app-server deployed via fallback"
+          fi
+
+          echo ""
+          echo "=== Checking ace-controller (Voice UI) ==="
+          if docker ps --format '{{.Names}}' | grep -q "ui-app\|python-app"; then
+            echo "✓ ace-controller services are running"
+          else
+            echo "⚠ ace-controller not running — deploying via fallback..."
+            docker compose --profile ace-controller -f ace-controller-voice-interface/docker-compose.yml up --build -d
+            echo "✓ ace-controller deployed via fallback"
+          fi
+
+          echo ""
+          echo "All containers:"
+          docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
 
       - name: Debug Service Endpoints
         run: |
@@ -665,13 +1037,49 @@ jobs:
           echo "========================================"
           echo "  WAITING FOR SERVICES TO BE READY"
           echo "========================================"
-          
-          # Just wait a bit for services to stabilize after debug
-          sleep 30
-          
-          # Show final container status
-          echo "Docker containers status:"
+
+          wait_for_endpoint() {
+            local name="$1" url="$2" max_attempts="$3" attempt=0
+            echo "Checking $name ($url)..."
+            while [ $attempt -lt $max_attempts ]; do
+              attempt=$((attempt + 1))
+              # -L: follow redirects (some stacks redirect away from /)
+              if curl -sfL -o /dev/null "$url" 2>/dev/null; then
+                echo "✓ $name is ready (attempt $attempt/$max_attempts)"
+                return 0
+              fi
+              if [ $((attempt % 10)) -eq 0 ]; then
+                echo "  Waiting for $name... ($attempt/$max_attempts)"
+                echo "  Container status:"
+                docker ps -a --format "  {{.Names}}: {{.Status}}" 2>/dev/null | head -10
+              fi
+              sleep 10
+            done
+            echo "✗ FAILED: $name not ready after $max_attempts attempts"
+            echo "  Container logs for debugging:"
+            for c in $(docker ps -a --format '{{.Names}}'); do
+              echo "  === $c ==="
+              docker logs --tail 20 "$c" 2>&1 | head -20 || true
+            done
+            return 1
+          }
+
+          FAILED=0
+
+          # Cloud mode: no local NIM, only check app server + voice UI
+          # App server is FastAPI (chain_server.py): GET /health → 200; /patient-intake is not a route
+          wait_for_endpoint "Agent App Server" "http://localhost:8081/health" 90 || FAILED=1
+
+          # Voice UI (ace-controller WebRTC) - exposed on host port 4400
+          wait_for_endpoint "Voice UI" "http://localhost:4400" 90 || FAILED=1
+
+          echo ""
+          echo "Final Docker containers status:"
           docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+          if [ $FAILED -ne 0 ]; then
+            exit 1
+          fi
 
       # ==========================================
       # PHASE 5: Run pytest UI Tests
