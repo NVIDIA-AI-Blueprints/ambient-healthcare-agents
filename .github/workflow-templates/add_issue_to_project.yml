@@ -16,7 +16,7 @@ jobs:
     name: Add issue or PR to project
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/add-to-project@latest
+      - uses: actions/add-to-project@v1.0.1
         with:
         # copy the URL to the project-url field
         # you will need a personal access token, or to create a GitHub app to support this action
