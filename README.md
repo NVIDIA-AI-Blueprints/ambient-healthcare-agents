@@ -107,8 +107,8 @@ Manages high-volume patient touchpoints (e.g., clinic intake, surveys, appointme
 |---------|----------|-----------------|
 | [Riva ASR NIM](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard) | Audio Transcription | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/parakeet-ctc-1_1b-asr/modelcard)) |
 | [Riva TTS NIM](https://build.nvidia.com/nvidia/magpie-tts-multilingual/modelcard) | Speech Synthesis | 1x various options including L40, A100, and more (see [modelcard](https://build.nvidia.com/nvidia/magpie-tts-multilingual/modelcard)) |
-[NemoGuard Content Safety Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard) (Optional for Enabling NeMo Guardrails) | Content Safety | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard))
-[NemoGuard Topic Control Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard) (Optional for Enabling NeMo Guardrails) | Topic Control | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard))
+| [NemoGuard Content Safety Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard) (Optional for Enabling NeMo Guardrails) | Content Safety | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-content-safety/modelcard)) |
+| [NemoGuard Topic Control Model](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard) (Optional for Enabling NeMo Guardrails) | Topic Control | 1x options including A100, H100, L40S, A6000 (see [modelcard](https://build.nvidia.com/nvidia/llama-3_1-nemoguard-8b-topic-control/modelcard)) |
 | [Instruct Model](https://build.nvidia.com/meta/llama-3_3-70b-instruct/modelcard) | Agent Reasoning and Tool Calling | 2x H100 80 GB<br>*or* 4x A100 80GB (see [modelcard](https://build.nvidia.com/meta/llama-3_3-70b-instruct/modelcard)) |
 
 **NVIDIA API Catalog Configuration:** 
