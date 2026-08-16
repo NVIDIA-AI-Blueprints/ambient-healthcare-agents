@@ -55,9 +55,11 @@ ipython_config.py
 *~
 .DS_Store
 
-# Project specific - exclude notebook_runner.py and its output directory
+# Project specific - exclude notebook runners and their output directories
 notebook_runner.py
+notebook_runner_nbclient.py
 notebook_runner_output/
+notebook_output/
 
 # Docker
 *.log
