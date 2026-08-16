@@ -500,7 +500,7 @@ jobs:
         if: always()
         run: |
           echo "Stopping all containers..."
-          docker compose down 2>/dev/null || true
+          docker compose -f ambient-provider/ambient-scribe/infra/compose.dev.yml down 2>/dev/null || true
           docker stop $(docker ps -aq) 2>/dev/null || true
           echo "✓ Cleanup completed"
 
@@ -646,9 +646,14 @@ jobs:
                   "os.environ['NEMOGUARD_CONTENT_SAFETY_LLM_GPU_ID'] = \"4\"",
                   "os.environ['NEMOGUARD_CONTENT_SAFETY_LLM_GPU_ID'] = \"2\"",
               )
+              # Handle both the misspelled and correctly spelled variants
               new = new.replace(
                   "os.environ['NEMOGUARD_TOPIC_CONTRIL_LLM_GPU_ID'] = \"5\"",
                   "os.environ['NEMOGUARD_TOPIC_CONTRIL_LLM_GPU_ID'] = \"3\"",
+              )
+              new = new.replace(
+                  "os.environ['NEMOGUARD_TOPIC_CONTROL_LLM_GPU_ID'] = \"5\"",
+                  "os.environ['NEMOGUARD_TOPIC_CONTROL_LLM_GPU_ID'] = \"3\"",
               )
               if new != full:
                   cell["source"] = new.splitlines(keepends=True)
