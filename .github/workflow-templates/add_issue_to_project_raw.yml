@@ -15,17 +15,18 @@ jobs:
           # ex: https://github.com/orgs/rapidsai/projects/41
           # use ORGANIZATION: rapidsai, PROJECT_NUMBER 41
           ORGANIZATION: YOUR_ORG
+          ORGANIZATION: ${{ github.repository_owner }}
           PROJECT_NUMBER: YOUR_PROJECT_NUMBER
         run: |
           gh api graphql -f query='
-            query($user: String!, $number: Int!) {
-              user(login: $user){
+            query($organization: String!, $number: Int!) {
+              organization(login: $organization){
                 projectV2(number: $number) {
                   id
                 }
               }
-            }' -f user=$USER -F number=$PROJECT_NUMBER > project_data.json
-          echo 'PROJECT_ID='$(jq '.data.user.projectV2.id' project_data.json) >> $GITHUB_ENV
+            }' -f organization=$ORGANIZATION -F number=$PROJECT_NUMBER > project_data.json
+          echo 'PROJECT_ID='$(jq '.data.organization.projectV2.id' project_data.json) >> $GITHUB_ENV
                     
       - name: Add issue to project
         env:
