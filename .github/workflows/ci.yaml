@@ -1,891 +1,203 @@
-# =============================================================================
-# Ambient Healthcare Agents CI
-# =============================================================================
+# Runs the Ambient Healthcare Agents QA suite (UI tests) from the shared QA image
+# against the provider and patient stacks deployed on this runner with hosted
+# NVIDIA endpoints (build.nvidia.com, NVCF Riva); no GPU is needed.
 #
-# Required Secrets:
-#   - NGC_API_KEY            : NVIDIA NGC API Key for application images (compose / notebooks)
-#   - TEST_DOCKER_PULL_KEY   : nvcr.io PAT for pulling TEST_IMAGE (may match NGC_API_KEY)
-#   - NVIDIA_API_KEY         : NVIDIA API Key for hosted NIM services
-#   - SMTP_USERNAME          : Gmail address for sending notification emails
-#   - SMTP_PASSWORD          : Gmail app-specific password for SMTP
-#
-# -----------------------------------------------------------------------------
-# Notebook → HTML Mapping (for pytest)
-# -----------------------------------------------------------------------------
-# This project only has UI tests, no notebook tests.
-# No HTML mapping is required - notebooks are used for deployment only.
-#
-# =============================================================================
+# Required repository secrets:
+#   NVIDIA_API_KEY         build.nvidia.com API key (nvapi-...).
+#   NGC_API_KEY            NGC key used by the patient agent and voice stacks.
+#   TEST_DOCKER_PULL_KEY   NVIDIA API key with pull access to the QA image.
+# Optional SMTP secrets (mail step skipped if any are missing):
+#   SMTP_USERNAME, SMTP_PASSWORD, SMTP_MAIL_TO, SMTP_MAIL_FROM
 
-name: Ambient Healthcare Agents CI
+name: Blueprint QA
 
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
-      run_ambient_provider:
-        description: 'Run Ambient Provider tests'
+      test_image:
+        description: QA test image
         required: false
-        default: true
-        type: boolean
-      run_ambient_patient:
-        description: 'Run Ambient Patient tests'
-        required: false
-        default: true
-        type: boolean
+        default: nvcr.io/rw983xdqtcdp/auto_test_team/blueprint-github-test-image:latest
 
-env:
-  TEST_IMAGE: nvcr.io/rw983xdqtcdp/auto_test_team/blueprint-github-test-image:latest
-  QA_TESTER_REPO: https://github.com/bp-cicd-org/qa-tester.git
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # ============================================
-  # PREFLIGHT: Check all prerequisites
-  # ============================================
-  preflight:
-    name: Preflight Checks
+  ambient-healthcare:
+    name: Ambient Healthcare Agents
     runs-on: ubuntu-latest
-    outputs:
-      preflight_passed: ${{ steps.preflight.outputs.passed }}
-
+    timeout-minutes: 120
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
+      QA_TEST_IMAGE: ${{ inputs.test_image || 'nvcr.io/rw983xdqtcdp/auto_test_team/blueprint-github-test-image:latest' }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Docker Login for test image (nvcr.io)
+      - name: Check secrets
         env:
           TEST_DOCKER_PULL_KEY: ${{ secrets.TEST_DOCKER_PULL_KEY }}
         run: |
-          echo "${TEST_DOCKER_PULL_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
-          echo "✓ nvcr.io login successful (TEST_DOCKER_PULL_KEY)"
+          set -euo pipefail
+          : "${NVIDIA_API_KEY:?NVIDIA_API_KEY secret missing}"
+          : "${NGC_API_KEY:?NGC_API_KEY secret missing}"
+          : "${TEST_DOCKER_PULL_KEY:?TEST_DOCKER_PULL_KEY secret missing}"
 
-      - name: Preflight Checks
-        id: preflight
-        env:
-          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          TEST_DOCKER_PULL_KEY: ${{ secrets.TEST_DOCKER_PULL_KEY }}
+      - name: Deploy ambient provider
+        working-directory: ambient-provider/ambient-scribe
         run: |
-          echo "========================================"
-          echo "  PREFLIGHT CHECKS"
-          echo "========================================"
-          echo ""
+          set -euo pipefail
+          cp apps/api/dot_env_example apps/api/.env
+          sed -i \
+            -e "s|^NVIDIA_API_KEY=.*|NVIDIA_API_KEY=${NVIDIA_API_KEY}|" \
+            -e "s|^OPENAI_BASE_URL=.*|OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1|" \
+            -e "s|^SELF_HOSTED=.*|SELF_HOSTED=false|" \
+            -e "s|^RIVA_URI=.*|RIVA_URI=grpc.nvcf.nvidia.com:443|" \
+            -e "s|^RIVA_FUNCTION_ID=.*|RIVA_FUNCTION_ID=1598d209-5e27-4d3c-8079-4751568b1081|" \
+            apps/api/.env
+          cp apps/ui/.env.example apps/ui/.env
+          make bootstrap
+          make dev
 
-          FAILED=0
-
-          # Check 1: NGC API Key
-          echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 1/7] NGC API Key                      │"
-          echo "└──────────────────────────────────────────────┘"
-          if [ -z "${NGC_API_KEY}" ]; then
-            echo "✗ ERROR: NGC_API_KEY is not set"
-            FAILED=1
-          else
-            echo "✓ NGC_API_KEY is set"
-          fi
-          echo ""
-
-          # Check 2: NVIDIA API Key
-          echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 2/7] NVIDIA API Key                   │"
-          echo "└──────────────────────────────────────────────┘"
-          if [ -z "${NVIDIA_API_KEY}" ]; then
-            echo "✗ ERROR: NVIDIA_API_KEY is not set"
-            FAILED=1
-          else
-            echo "✓ NVIDIA_API_KEY is set"
-          fi
-          echo ""
-
-          # Check 3: Test image registry key (docker login in prior step)
-          echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 3/7] TEST_DOCKER_PULL_KEY             │"
-          echo "└──────────────────────────────────────────────┘"
-          if [ -z "${TEST_DOCKER_PULL_KEY}" ]; then
-            echo "✗ ERROR: TEST_DOCKER_PULL_KEY is not set"
-            FAILED=1
-          else
-            echo "✓ TEST_DOCKER_PULL_KEY is set"
-          fi
-          echo ""
-
-          # Check 4: Test Image can be pulled
-          echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 4/7] Test Image                       │"
-          echo "└──────────────────────────────────────────────┘"
-          echo "Pulling test image: ${{ env.TEST_IMAGE }}"
-          if docker pull ${{ env.TEST_IMAGE }}; then
-            echo "✓ Test image pulled successfully"
-          else
-            echo "✗ ERROR: Cannot pull test image"
-            FAILED=1
-          fi
-          echo ""
-
-          # Check 5: Required notebooks exist
-          echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 5/7] Required Notebooks               │"
-          echo "└──────────────────────────────────────────────┘"
-          if [ -f "ambient-provider.ipynb" ]; then
-            echo "✓ ambient-provider.ipynb exists"
-          else
-            echo "✗ ERROR: ambient-provider.ipynb not found"
-            FAILED=1
-          fi
-          if [ -f "ambient-patient.ipynb" ]; then
-            echo "✓ ambient-patient.ipynb exists"
-          else
-            echo "✗ ERROR: ambient-patient.ipynb not found"
-            FAILED=1
-          fi
-          echo ""
-
-          # Check 6: Submodules
-          echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 6/7] Git Submodules                   │"
-          echo "└──────────────────────────────────────────────┘"
-          if [ -d "ambient-provider" ] && [ "$(ls -A ambient-provider 2>/dev/null)" ]; then
-            echo "✓ ambient-provider submodule is initialized"
-          else
-            echo "⚠ WARNING: ambient-provider submodule may not be initialized"
-          fi
-          if [ -d "ambient-patient" ] && [ "$(ls -A ambient-patient 2>/dev/null)" ]; then
-            echo "✓ ambient-patient submodule is initialized"
-          else
-            echo "⚠ WARNING: ambient-patient submodule may not be initialized"
-          fi
-          echo ""
-
-          # Check 7: Clone qa-tester repository
-          echo "┌──────────────────────────────────────────────┐"
-          echo "│ [Check 7/7] QA Tester Repository             │"
-          echo "└──────────────────────────────────────────────┘"
-          echo "Cloning qa-tester repository..."
-          if git clone --depth 1 https://x-access-token:${{ github.token }}@github.com/bp-cicd-org/qa-tester.git _qa_tester; then
-            if [ -f "_qa_tester/utils/notebook_runner/notebook_runner_nbclient.py" ]; then
-              echo "✓ qa-tester cloned and notebook_runner_nbclient.py found"
-            else
-              echo "✗ ERROR: notebook_runner_nbclient.py not found in qa-tester"
-              FAILED=1
-            fi
-          else
-            echo "✗ ERROR: Cannot clone qa-tester repository"
-            FAILED=1
-          fi
-          echo ""
-
-          # Final result
-          echo "========================================"
-          if [ $FAILED -eq 0 ]; then
-            echo "✓ ALL PREFLIGHT CHECKS PASSED"
-            echo "passed=true" >> $GITHUB_OUTPUT
-          else
-            echo "✗ PREFLIGHT CHECKS FAILED"
-            echo "passed=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-          echo "========================================"
-
-  # ============================================
-  # AMBIENT PROVIDER: Deploy & Test
-  # ============================================
-  ambient-provider:
-    name: Ambient Provider - Deploy & Test
-    needs: preflight
-    if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_ambient_provider) }}
-    runs-on: arc-runners-org-nvidia-ai-bp-4-gpu
-    timeout-minutes: 180
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      # ==========================================
-      # PHASE 1: Environment Setup
-      # ==========================================
-      - name: Setup Environment
+      - name: Deploy ambient patient agent
+        working-directory: ambient-patient
         run: |
-          echo "========================================"
-          echo "  AMBIENT PROVIDER - ENVIRONMENT SETUP"
-          echo "========================================"
+          set -euo pipefail
+          sed -i \
+            -e "s|^NVIDIA_API_KEY=.*|NVIDIA_API_KEY=\"${NVIDIA_API_KEY}\"|" \
+            -e "s|^NGC_API_KEY=.*|NGC_API_KEY=\"${NGC_API_KEY}\"|" \
+            -e "s|^NEMO_GUARDRAILS_CONFIG_PATH=.*|NEMO_GUARDRAILS_CONFIG_PATH=nmgr-config-store/patient-intake-nemoguard|" \
+            -e "s|^LANGSMITH_TRACING=.*|LANGSMITH_TRACING=false|" \
+            agent/vars.env
+          docker compose -f agent/docker-compose.yaml up --build -d app-server full-agent-ui
 
-          # System info
-          echo "Runner: $(hostname)"
-          echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
-          echo "Docker: $(docker --version)"
-          echo ""
-
-          # GPU info
-          echo "GPU Information:"
-          nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader || echo "nvidia-smi not available"
-          echo ""
-
-      - name: Pull test image then Docker Login to NGC
-        env:
-          TEST_DOCKER_PULL_KEY: ${{ secrets.TEST_DOCKER_PULL_KEY }}
-          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
+      - name: Deploy ambient patient voice
+        working-directory: ambient-patient
         run: |
-          echo "${TEST_DOCKER_PULL_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
-          echo "Pulling test image: ${{ env.TEST_IMAGE }}"
-          docker pull ${{ env.TEST_IMAGE }}
-          echo "${NGC_API_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
-          echo "✓ Test image pulled; NGC login active for application images"
+          set -euo pipefail
+          sed -i \
+            -e "s|^NGC_API_KEY=.*|NGC_API_KEY=${NGC_API_KEY}|" \
+            -e "s|^NVIDIA_API_KEY=.*|NVIDIA_API_KEY=${NVIDIA_API_KEY}|" \
+            -e "s|^CONFIG_PATH=.*|CONFIG_PATH=./configs/config_riva_public_endpoints.yaml|" \
+            ace-controller-voice-interface/ace_controller.env
+          docker compose --profile ace-controller -f ace-controller-voice-interface/docker-compose.yml up --build -d
 
-      # ==========================================
-      # PHASE 2: Setup Notebook Runner
-      # ==========================================
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Download Notebook Runner
+      - name: Wait for services
         run: |
-          echo "Cloning qa-tester repository..."
-          git clone --depth 1 https://x-access-token:${{ github.token }}@github.com/bp-cicd-org/qa-tester.git _qa_tester
-          cp _qa_tester/utils/notebook_runner/notebook_runner_nbclient.py .
-          rm -rf _qa_tester
-          chmod +x notebook_runner_nbclient.py
-          echo "✓ notebook_runner_nbclient.py ready"
-
-      - name: Install Notebook Dependencies
-        run: |
-          pip install --upgrade pip
-          pip install ipykernel nbclient nbformat jupyter nbconvert
-          python -m ipykernel install --user --name python3 --display-name "Python 3"
-          echo "✓ Notebook dependencies installed"
-
-      # ==========================================
-      # PHASE 3: Pre-configure Environment
-      # ==========================================
-      - name: Pre-configure API and UI Environment
-        env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-        run: |
-          # Create apps/api/.env and apps/ui/.env under ambient-scribe
-          mkdir -p ambient-provider/ambient-scribe/apps/api
-          cat > ambient-provider/ambient-scribe/apps/api/.env <<EOF
-          # Auto-configured by GitHub Actions
-          NVIDIA_API_KEY=${NVIDIA_API_KEY}
-          RIVA_URI=parakeet-nim:50051
-          ENABLE_STREAMING=false
-          EOF
-          mkdir -p ambient-provider/ambient-scribe/apps/ui
-          cat > ambient-provider/ambient-scribe/apps/ui/.env <<EOF
-          # Auto-configured by GitHub Actions
-          VITE_USE_STREAMING=false
-          EOF
-          echo "✓ API + UI environment pre-configured (streaming disabled)"
-
-      - name: Patch compose.dev.yml GPU device_ids for CI
-        run: |
-          COMPOSE="ambient-provider/ambient-scribe/infra/compose.dev.yml"
-          if [ ! -f "$COMPOSE" ]; then
-            echo "✗ ERROR: $COMPOSE not found (is ambient-provider submodule checked out?)"
-            exit 1
-          fi
-          python3 << 'PY'
-          import re
-          from pathlib import Path
-
-          p = Path("ambient-provider/ambient-scribe/infra/compose.dev.yml")
-          text = p.read_text()
-          orig = text
-          # parakeet-nim: pin first device_ids in this service block to GPU 0
-          text, n1 = re.subn(
-              r"(parakeet-nim:[\s\S]*?device_ids:\s*)\[[^\]]+\]",
-              r"\1['0']",
-              text,
-              count=1,
-          )
-          # llama-nim: use GPUs 1 and 2
-          text, n2 = re.subn(
-              r"(llama-nim:[\s\S]*?device_ids:\s*)\[[^\]]+\]",
-              r"\1['1','2']",
-              text,
-              count=1,
-          )
-          if n1 != 1 or n2 != 1:
-              print("✗ ERROR: expected one parakeet-nim and one llama-nim device_ids line; got", n1, n2)
-              raise SystemExit(1)
-          p.write_text(text)
-          print("✓ Patched GPU placement: parakeet-nim → ['0'], llama-nim → ['1','2']")
-          PY
-
-      # ==========================================
-      # PHASE 4: Execute Notebook (Deploy)
-      # ==========================================
-      - name: Execute Notebook - Deploy Ambient Provider
-        env:
-          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-        run: |
-          echo "========================================"
-          echo "  EXECUTING NOTEBOOK: ambient-provider"
-          echo "========================================"
-
-          # Export environment variables for notebook execution
-          export NVIDIA_API_KEY="${NVIDIA_API_KEY}"
-          export NGC_API_KEY="${NGC_API_KEY}"
-
-          COMMIT_SHA=$(git rev-parse --short=7 HEAD)
-
-          # Skip cells not compatible with CI environment:
-          # - Cell 1: cd ~/ (home directory path)
-          # - Cell 7: Sets NGC_API_KEY to placeholder (we pass via -e instead)
-          # - Cell 15, 16, 18: Brev-specific /ephemeral, daemon.json checks
-          # - Cell 19: systemctl restart docker
-          # - Cell 20: chmod /ephemeral
-          # - Cell 42: Shell commands without ! prefix (SyntaxError)
-          # - Cell 51: ngrok install/config without ! prefix (SyntaxError)
-          # - Cells 54,55,57,58: trailing !make down / !make dev pairs (after streaming docs);
-          #   last executed code cell should be 48 (!docker ps | grep parakeet)
-          python notebook_runner_nbclient.py \
-            -f ambient-provider.ipynb \
-            --output-dir notebook_output \
-            --timeout 3600 \
-            --skip-deps-check \
-            --skip-tags ci-skip \
-            --skip-cells 1 7 15 16 18 19 20 42 51 54 55 57 58 \
-            -e NGC_API_KEY="${NGC_API_KEY}" \
-            -e NVIDIA_API_KEY="${NVIDIA_API_KEY}"
-
-          echo ""
-          echo "✓ Notebook execution completed"
-          echo "Generated files:"
-          ls -la notebook_output/
-
-      - name: Wait for Services Ready
-        run: |
-          echo "========================================"
-          echo "  WAITING FOR NIM SERVICES (ASR + LLM)"
-          echo "========================================"
-          # ASR NIM (Parakeet): host port 9000
-          # LLM NIM (Llama): host port 8001 (maps container :8000)
-          # Interval 30s, max wait 8 minutes (480s)
-
-          START=$(date +%s)
-          MAX_WAIT=480
-          INTERVAL=30
-
-          while true; do
-            if curl -sf http://localhost:9000/v1/health/ready >/dev/null && \
-               curl -sf http://localhost:8001/v1/health/ready >/dev/null; then
-              echo "✓ ASR NIM (:9000) and LLM NIM (:8001) /v1/health/ready both OK"
-              break
-            fi
-            NOW=$(date +%s)
-            ELAPSED=$((NOW - START))
-            if [ "$ELAPSED" -ge "$MAX_WAIT" ]; then
-              echo "✗ Timeout: NIM health endpoints not ready within ${MAX_WAIT}s"
-              echo "  ASR: curl -sf http://localhost:9000/v1/health/ready"
-              echo "  LLM: curl -sf http://localhost:8001/v1/health/ready"
-              echo ""
-              echo "══════════════════════════════════════════════════════════════"
-              echo "  ASR NIM container logs (parakeet-1-1b-ctc-en-us)"
-              echo "  (CI uses --tail; avoid -f here so the job does not hang)"
-              echo "══════════════════════════════════════════════════════════════"
-              docker logs --tail 300 parakeet-1-1b-ctc-en-us 2>&1 || echo "(no logs for parakeet-1-1b-ctc-en-us)"
-              echo ""
-              echo "══════════════════════════════════════════════════════════════"
-              echo "  LLM NIM container logs (llama-3.3-nemotron-super-49b-v1)"
-              echo "══════════════════════════════════════════════════════════════"
-              docker logs --tail 300 llama-3.3-nemotron-super-49b-v1 2>&1 || echo "(no logs for llama-3.3-nemotron-super-49b-v1)"
+          set -euo pipefail
+          for url in \
+            http://localhost:8000/api/health/ \
+            http://localhost:5173/ \
+            http://localhost:8081/ \
+            http://localhost:7861/ \
+            http://localhost:7860/get_prompt \
+            http://localhost:4400/; do
+            ok=false
+            for _ in $(seq 1 60); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
+              if [ "$code" != "000" ] && [ "${code:0:1}" != "5" ]; then
+                ok=true
+                break
+              fi
+              sleep 10
+            done
+            if [ "$ok" != true ]; then
+              echo "::error::$url not ready after 10 minutes (last HTTP $code)"
               exit 1
             fi
-            echo "  Waiting for NIM readiness... (${ELAPSED}s / ${MAX_WAIT}s), next check in ${INTERVAL}s"
-            sleep "$INTERVAL"
+            echo "$url ready (HTTP $code)"
           done
 
-          echo ""
-          echo "Docker containers status:"
-          docker ps -a --format "table {{.Names}}\t{{.Status}}"
-
-      # ==========================================
-      # PHASE 5: Run pytest UI Tests
-      # Note: UI tests must run on same runner as deploy (services need to be accessible)
-      # ==========================================
-      - name: Run UI Tests - Ambient Provider
-        id: pytest
+      - name: Run Ambient Healthcare tests
+        env:
+          TEST_DOCKER_PULL_KEY: ${{ secrets.TEST_DOCKER_PULL_KEY }}
         run: |
-          echo "========================================"
-          echo "  RUNNING PYTEST: ambient_provider UI"
-          echo "========================================"
+          set -euo pipefail
+          echo "${TEST_DOCKER_PULL_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
+          docker pull "${QA_TEST_IMAGE}"
+          rc=0
+          docker run --rm -i --network host \
+            -v "$(pwd):/blueprint" \
+            "${QA_TEST_IMAGE}" bash -s <<'DOCKER_SCRIPT' || rc=$?
+          set -uo pipefail
+          cd /app
+          rc=0
+          pytest testcases/ambient-healthcare/ \
+            -m "ambient_provider or ambient_patient_agent or ambient_patient_voice" \
+            --ambient-provider-playground-url=http://localhost:5173 \
+            --ambient-agent-ui-url=http://localhost:7861 \
+            --ambient-patient-voice-ui-url=http://localhost:4400 \
+            --disable-warnings -v --timeout=900 \
+            --html=/blueprint/ambient-healthcare-test.html --self-contained-html || rc=$?
+          cp -r /app/reports /blueprint/reports 2>/dev/null || true
+          exit "$rc"
+          DOCKER_SCRIPT
+          if [ ! -f ambient-healthcare-test.html ]; then
+            echo "::error::no pytest report written"
+            exit 1
+          fi
+          exit "$rc"
 
-          COMMIT_SHA=$(git rev-parse --short=7 HEAD)
-          REPORT_FILE="ambient_provider_${COMMIT_SHA}_test_report.html"
+      - name: Capture container logs
+        if: failure()
+        run: |
+          mkdir -p ci-diagnostics
+          docker compose -f ambient-provider/ambient-scribe/infra/compose.dev.yml logs --no-color > ci-diagnostics/ambient-provider.log 2>&1 || true
+          docker compose -f ambient-patient/agent/docker-compose.yaml logs --no-color > ci-diagnostics/ambient-patient-agent.log 2>&1 || true
+          docker compose --profile ace-controller -f ambient-patient/ace-controller-voice-interface/docker-compose.yml logs --no-color > ci-diagnostics/ambient-patient-voice.log 2>&1 || true
 
-          PROVIDER_UI_URL="http://localhost:5173"
-          API_URL="http://localhost:8000"
-
-          echo "UI URL: $PROVIDER_UI_URL"
-          echo "API URL: $API_URL"
-          echo ""
-
-          mkdir -p test_reports
-
-          docker run --rm \
-            --network host \
-            -v "$(pwd)/notebook_output:/app/input" \
-            -v "$(pwd)/test_reports:/app/reports" \
-            ${{ env.TEST_IMAGE }} \
-            pytest -m "ambient_provider and ui" \
-              --ambient-provider-playground-url="$PROVIDER_UI_URL" \
-              --api-url="$API_URL" \
-              --disable-warnings \
-              --self-contained-html \
-              --html=/app/reports/${REPORT_FILE}
-
-          echo ""
-          echo "Test report saved to: test_reports/${REPORT_FILE}"
-
-      - name: Print NIM logs after provider UI tests
+      - name: Upload report
         if: always()
-        run: |
-          echo "========================================"
-          echo "  NIM CONTAINER LOGS (after ambient_provider UI tests)"
-          echo "========================================"
-          echo ""
-          echo "══════════════════════════════════════════════════════════════"
-          echo "  ASR NIM (parakeet-1-1b-ctc-en-us)"
-          echo "══════════════════════════════════════════════════════════════"
-          docker logs --tail 300 parakeet-1-1b-ctc-en-us 2>&1 || echo "(no logs for parakeet-1-1b-ctc-en-us)"
-          echo ""
-          echo "══════════════════════════════════════════════════════════════"
-          echo "  LLM NIM (llama-3.3-nemotron-super-49b-v1)"
-          echo "══════════════════════════════════════════════════════════════"
-          docker logs --tail 300 llama-3.3-nemotron-super-49b-v1 2>&1 || echo "(no logs for llama-3.3-nemotron-super-49b-v1)"
-
-      - name: Print infra UI/API logs after provider UI tests
-        if: always()
-        run: |
-          echo "========================================"
-          echo "  INFRA UI / API CONTAINER LOGS (after ambient_provider UI tests)"
-          echo "========================================"
-          echo ""
-          echo "══════════════════════════════════════════════════════════════"
-          echo "  infra-ui-1"
-          echo "══════════════════════════════════════════════════════════════"
-          docker logs --tail 300 infra-ui-1 2>&1 || echo "(no logs for infra-ui-1)"
-          echo ""
-          echo "══════════════════════════════════════════════════════════════"
-          echo "  infra-api-1"
-          echo "══════════════════════════════════════════════════════════════"
-          docker logs --tail 300 infra-api-1 2>&1 || echo "(no logs for infra-api-1)"
-
-      - name: Upload Test Report
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: ambient-provider-test-report
-          path: test_reports/
-          retention-days: 30
-
-      - name: Upload Notebook HTML
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ambient-provider-notebook-html
-          path: notebook_output/*.html
+          name: ambient-healthcare-test
+          path: |
+            ambient-healthcare-test.html
+            reports/
+            ci-diagnostics/
+          if-no-files-found: ignore
           retention-days: 30
 
       - name: Cleanup
         if: always()
         run: |
-          echo "Stopping all containers..."
-          docker compose down 2>/dev/null || true
-          docker stop $(docker ps -aq) 2>/dev/null || true
-          echo "✓ Cleanup completed"
-
-  # ============================================
-  # AMBIENT PATIENT: Deploy & Test
-  # Note: UI tests must run on same runner as deploy (services need to be accessible)
-  # ============================================
-  ambient-patient:
-    name: Ambient Patient - Deploy & Test
-    needs: preflight
-    if: ${{ needs.preflight.outputs.preflight_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_ambient_patient) }}
-    runs-on: arc-runners-org-nvidia-ai-bp-4-gpu
-    timeout-minutes: 240
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      # ==========================================
-      # PHASE 1: Environment Setup
-      # ==========================================
-      - name: Setup Environment
-        run: |
-          echo "========================================"
-          echo "  AMBIENT PATIENT - ENVIRONMENT SETUP"
-          echo "========================================"
-
-          # System info
-          echo "Runner: $(hostname)"
-          echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
-          echo "Docker: $(docker --version)"
-          echo ""
-
-          # GPU info
-          echo "GPU Information:"
-          nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader || echo "nvidia-smi not available"
-          echo ""
-
-      - name: Pull test image then Docker Login to NGC
-        env:
-          TEST_DOCKER_PULL_KEY: ${{ secrets.TEST_DOCKER_PULL_KEY }}
-          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
-        run: |
-          echo "${TEST_DOCKER_PULL_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
-          echo "Pulling test image: ${{ env.TEST_IMAGE }}"
-          docker pull ${{ env.TEST_IMAGE }}
-          echo "${NGC_API_KEY}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
-          echo "✓ Test image pulled; NGC login active for application images"
-
-      # ==========================================
-      # PHASE 2: Setup Notebook Runner
-      # ==========================================
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Download Notebook Runner
-        run: |
-          echo "Cloning qa-tester repository..."
-          git clone --depth 1 https://x-access-token:${{ github.token }}@github.com/bp-cicd-org/qa-tester.git _qa_tester
-          cp _qa_tester/utils/notebook_runner/notebook_runner_nbclient.py .
-          rm -rf _qa_tester
-          chmod +x notebook_runner_nbclient.py
-          echo "✓ notebook_runner_nbclient.py ready"
-
-      - name: Install Notebook Dependencies
-        run: |
-          pip install --upgrade pip
-          pip install ipykernel nbclient nbformat jupyter nbconvert
-          python -m ipykernel install --user --name python3 --display-name "Python 3"
-          echo "✓ Notebook dependencies installed"
-
-      # ==========================================
-      # PHASE 3: Pre-configure Environment
-      # ==========================================
-      - name: Pre-configure API Environment
-        env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
-        run: |
-          # Create vars.env for ambient-patient agent
-          mkdir -p ambient-patient/agent
-          cat > ambient-patient/agent/vars.env <<EOF
-          # Auto-configured by GitHub Actions
-          NVIDIA_API_KEY=${NVIDIA_API_KEY}
-          NGC_API_KEY=${NGC_API_KEY}
-          AGENT_LLM_BASE_URL=http://agent-instruct-llm:8000/v1
-          AGENT_LLM_MODEL=meta/llama-3.3-70b-instruct
-          NEMO_GUARDRAILS_CONFIG_PATH=nmgr-config-store/patient-intake-nemoguard-self-hosted-nim
-          EOF
-
-          # Create ace_controller.env
-          mkdir -p ambient-patient/ace-controller-voice-interface
-          cat > ambient-patient/ace-controller-voice-interface/ace_controller.env <<EOF
-          # Auto-configured by GitHub Actions
-          NVIDIA_API_KEY=${NVIDIA_API_KEY}
-          NGC_API_KEY=${NGC_API_KEY}
-          CONFIG_PATH=./configs/config_riva_public_endpoints.yaml
-          EOF
-
-          echo "✓ API environment pre-configured"
-
-      # ==========================================
-      # PHASE 4: Execute Notebook (Deploy)
-      # ==========================================
-      - name: Preprocess ambient-patient.ipynb for CI
-        run: |
-          echo "Preprocessing ambient-patient.ipynb for CI..."
-          # Notebook is JSON; replace input(\"Enter your NGC API key: \") in raw JSON
-          sed -i 's/input(\\"Enter your NGC API key: \\")/os.environ.get(\\"NGC_API_KEY\\")/g' ambient-patient.ipynb
-
-          python3 << 'PY'
-          import json
-          from pathlib import Path
-
-          path = Path("ambient-patient.ipynb")
-          nb = json.loads(path.read_text(encoding="utf-8"))
-
-          for cell in nb.get("cells", []):
-              if cell.get("cell_type") != "code":
-                  continue
-              src = cell.get("source", [])
-              full = src if isinstance(src, str) else "".join(src)
-              new = full
-              # Do not print env files in CI logs (API keys)
-              new = new.replace(
-                  "!cat agent/vars.env",
-                  "!true  # CI: skipped cat agent/vars.env (secrets)",
-              )
-              new = new.replace(
-                  "!cat ace-controller-voice-interface/ace_controller.env",
-                  "!true  # CI: skipped cat ace_controller.env (secrets)",
-              )
-              # GPU layout for CI runner (4-GPU class)
-              new = new.replace(
-                  "os.environ['AGENT_LLM_GPU_ID'] = \"0,1,2,3\"",
-                  "os.environ['AGENT_LLM_GPU_ID'] = \"0,1\"",
-              )
-              new = new.replace(
-                  "os.environ['NEMOGUARD_CONTENT_SAFETY_LLM_GPU_ID'] = \"4\"",
-                  "os.environ['NEMOGUARD_CONTENT_SAFETY_LLM_GPU_ID'] = \"2\"",
-              )
-              new = new.replace(
-                  "os.environ['NEMOGUARD_TOPIC_CONTRIL_LLM_GPU_ID'] = \"5\"",
-                  "os.environ['NEMOGUARD_TOPIC_CONTRIL_LLM_GPU_ID'] = \"3\"",
-              )
-              if new != full:
-                  cell["source"] = new.splitlines(keepends=True)
-
-          path.write_text(json.dumps(nb, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-          print("✓ Notebook preprocessed (NGC input, no cat secrets, GPU IDs for CI)")
-          PY
-
-      - name: Execute Notebook - Deploy Ambient Patient
-        env:
-          NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-        run: |
-          echo "========================================"
-          echo "  EXECUTING NOTEBOOK: ambient-patient"
-          echo "========================================"
-
-          # Export environment variables for notebook execution
-          export NVIDIA_API_KEY="${NVIDIA_API_KEY}"
-          export NGC_API_KEY="${NGC_API_KEY}"
-
-          COMMIT_SHA=$(git rev-parse --short=7 HEAD)
-
-          # Skip cells not compatible with CI environment:
-          # - Cell 19, 20, 22: Brev-specific /ephemeral, daemon.json checks
-          # - Cell 24: systemctl restart docker
-          # - Cell 43+: API test calls (deployment is main goal, pytest does testing)
-          # - Cells 54, 56, 57, 59: !cat ace_controller.env / config.ts (preprocessed to !true; skip to avoid noise)
-          # - Cell 64: optional docker ps check after ace-controller (skipped to match prior scope)
-          # - Cell 68, 70, 72: docker compose down / cleanup commands
-          # Executed (not skipped): 49–51 ifconfig + coturn, 55/58 TURN env + RTC_CONFIG sed, 62 ace-controller compose up
-          python notebook_runner_nbclient.py \
-            -f ambient-patient.ipynb \
-            --output-dir notebook_output \
-            --timeout 3600 \
-            --skip-deps-check \
-            --skip-tags ci-skip \
-            --skip-cells 19 20 22 24 43 45 47 54 56 57 59 64 68 70 72 \
-            -e NGC_API_KEY="${NGC_API_KEY}" \
-            -e NVIDIA_API_KEY="${NVIDIA_API_KEY}"
-
-          echo ""
-          echo "✓ Notebook execution completed"
-          echo "Generated files:"
-          ls -la notebook_output/
-
-      - name: Wait for Services Ready
-        run: |
-          echo "========================================"
-          echo "  WAITING FOR SERVICES TO BE READY (patient stack)"
-          echo "========================================"
-          # Nemoguard content-safety NIM → host :8060
-          # Nemoguard topic-control NIM → host :8070
-          # Agent instruct LLM NIM → host :8050
-          # Interval 30s, max wait 30 minutes (1800s)
-
-          START=$(date +%s)
-          MAX_WAIT=1800
-          INTERVAL=30
-
-          while true; do
-            if curl -sf http://localhost:8060/v1/health/ready >/dev/null && \
-               curl -sf http://localhost:8070/v1/health/ready >/dev/null && \
-               curl -sf http://localhost:8050/v1/health/ready >/dev/null; then
-              echo "✓ All three health endpoints ready (:8060 content-safety, :8070 topic-control, :8050 agent LLM)"
-              break
-            fi
-            NOW=$(date +%s)
-            ELAPSED=$((NOW - START))
-            if [ "$ELAPSED" -ge "$MAX_WAIT" ]; then
-              echo "✗ Timeout: NIM health endpoints not ready within ${MAX_WAIT}s (30 min)"
-              echo "  curl -sf http://localhost:8060/v1/health/ready"
-              echo "  curl -sf http://localhost:8070/v1/health/ready"
-              echo "  curl -sf http://localhost:8050/v1/health/ready"
-              echo ""
-              echo "══════════════════════════════════════════════════════════════"
-              echo "  nemoguard-content-safety-llm (:8060)"
-              echo "══════════════════════════════════════════════════════════════"
-              docker logs --tail 300 nemoguard-content-safety-llm 2>&1 || echo "(no logs)"
-              echo ""
-              echo "══════════════════════════════════════════════════════════════"
-              echo "  nemoguard-topic-control-llm (:8070)"
-              echo "══════════════════════════════════════════════════════════════"
-              docker logs --tail 300 nemoguard-topic-control-llm 2>&1 || echo "(no logs)"
-              echo ""
-              echo "══════════════════════════════════════════════════════════════"
-              echo "  agent-instruct-llm (:8050)"
-              echo "══════════════════════════════════════════════════════════════"
-              docker logs --tail 300 agent-instruct-llm 2>&1 || echo "(no logs)"
-              exit 1
-            fi
-            echo "  Waiting for NIM readiness... (${ELAPSED}s / ${MAX_WAIT}s), next check in ${INTERVAL}s"
-            sleep "$INTERVAL"
-          done
-
-          echo ""
-          echo "Docker containers status:"
-          docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-      # ==========================================
-      # PHASE 5: Run pytest UI Tests
-      # ==========================================
-      - name: Run UI Tests - Ambient Patient Voice
-        id: pytest_voice
-        run: |
-          echo "========================================"
-          echo "  RUNNING PYTEST: ambient_patient_voice UI"
-          echo "========================================"
-
-          COMMIT_SHA=$(git rev-parse --short=7 HEAD)
-          REPORT_FILE="ambient_patient_voice_${COMMIT_SHA}_test_report.html"
-
-          VOICE_UI_URL="http://localhost:4400"
-
-          echo "Voice UI URL: $VOICE_UI_URL"
-          echo ""
-
-          mkdir -p test_reports
-
-          docker run --rm \
-            --network host \
-            -v "$(pwd)/notebook_output:/app/input" \
-            -v "$(pwd)/test_reports:/app/reports" \
-            ${{ env.TEST_IMAGE }} \
-            pytest -m "ambient_patient_voice and ui" \
-              --ambient-patient-voice-ui-url="$VOICE_UI_URL" \
-              --disable-warnings \
-              --self-contained-html \
-              --html=/app/reports/${REPORT_FILE}
-
-          echo ""
-          echo "Test report saved to: test_reports/${REPORT_FILE}"
-
-      - name: Upload Test Reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ambient-patient-test-reports
-          path: test_reports/
-          retention-days: 30
-
-      - name: Upload Notebook HTML
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ambient-patient-notebook-html
-          path: notebook_output/*.html
-          retention-days: 30
-
-      - name: Cleanup
-        if: always()
-        run: |
-          echo "Stopping all containers..."
+          docker compose -f ambient-provider/ambient-scribe/infra/compose.dev.yml down 2>/dev/null || true
+          docker compose --profile ace-controller -f ambient-patient/ace-controller-voice-interface/docker-compose.yml down 2>/dev/null || true
           docker compose -f ambient-patient/agent/docker-compose.yaml down 2>/dev/null || true
-          docker compose -f ambient-patient/ace-controller-voice-interface/docker-compose.yml down 2>/dev/null || true
-          docker stop $(docker ps -aq) 2>/dev/null || true
-          echo "✓ Cleanup completed"
+          docker rmi "${QA_TEST_IMAGE}" 2>/dev/null || true
+          docker image prune -f 2>/dev/null || true
 
-  # ============================================
-  # SUMMARY: Generate final report
-  # ============================================
-  summary:
-    name: Generate Summary
-    needs: [preflight, ambient-provider, ambient-patient]
-    if: always()
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-        continue-on-error: true
-
-      - name: Generate Summary Report
-        run: |
-          echo "# Ambient Healthcare Agents CI Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Generated at: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          echo "## Job Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Preflight | ${{ needs.preflight.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Ambient Provider | ${{ needs.ambient-provider.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Ambient Patient | ${{ needs.ambient-patient.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          echo "## Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Test reports and notebook HTML outputs are available in the Artifacts section." >> $GITHUB_STEP_SUMMARY
-
-          if [ -d "artifacts" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Downloaded Artifacts" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            find artifacts -type f -name "*.html" 2>/dev/null || echo "No HTML files found"
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Set Result Output
-        id: set_result
+      - name: Detect SMTP
+        id: smtp
         if: always()
+        env:
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_MAIL_TO: ${{ secrets.SMTP_MAIL_TO }}
+          SMTP_MAIL_FROM: ${{ secrets.SMTP_MAIL_FROM }}
         run: |
-          # Check if all jobs passed (skipped jobs are considered OK)
-          PREFLIGHT="${{ needs.preflight.result }}"
-          PROVIDER="${{ needs.ambient-provider.result }}"
-          PATIENT="${{ needs.ambient-patient.result }}"
-
-          if [ "$PREFLIGHT" == "success" ] && \
-             ([ "$PROVIDER" == "success" ] || [ "$PROVIDER" == "skipped" ]) && \
-             ([ "$PATIENT" == "success" ] || [ "$PATIENT" == "skipped" ]); then
-            echo "RESULT=PASS" >> $GITHUB_OUTPUT
-          else
-            echo "RESULT=FAIL" >> $GITHUB_OUTPUT
-          fi
+          [ -n "${SMTP_USERNAME:-}" ] && [ -n "${SMTP_PASSWORD:-}" ] \
+            && [ -n "${SMTP_MAIL_TO:-}" ] && [ -n "${SMTP_MAIL_FROM:-}" ] \
+            && echo "enabled=true" >> "$GITHUB_OUTPUT" \
+            || echo "enabled=false" >> "$GITHUB_OUTPUT"
 
       - name: Send mail
+        if: always() && steps.smtp.outputs.enabled == 'true'
         uses: dawidd6/action-send-mail@6e71c855c9a091d80a519621b9fd3e8d252ca40c
-        if: always()
+        continue-on-error: true
         with:
           server_address: smtp.gmail.com
           server_port: 587
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: "QA Test Workflow Result for ${{ github.repository }}"
-          to: Github-Action-Blueprint-QA@nvidia.com
-          from: github-workflow-notification@gmail.com
+          to: ${{ secrets.SMTP_MAIL_TO }}
+          from: ${{ secrets.SMTP_MAIL_FROM }}
           html_body: |
-            <p>Hello,</p>
-
-            <p>The workflow for repository: <strong>${{ github.repository }}</strong> has completed.<br>
-            <strong>Result:</strong> ${{ steps.set_result.outputs.RESULT }}</p>
-
-            <p>You can review the details on GitHub:<br>
-            <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}</a></p>
-
-            <p>Thanks!</p>
+            <p>Workflow for <strong>${{ github.repository }}</strong> finished: <strong>${{ job.status }}</strong></p>
+            <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View run</a></p>
