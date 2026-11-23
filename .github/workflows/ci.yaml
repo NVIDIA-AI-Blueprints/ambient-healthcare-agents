@@ -36,6 +36,8 @@ permissions:
 env:
   PROVIDER_DIR: ambient-provider/ambient-scribe
   PATIENT_DIR: ambient-patient
+  HOSTED_LLM_MODEL: mistralai/mistral-large-4-1t-a52b
+  HOSTED_CONTENT_SAFETY_MODEL: nvidia/llama-3.1-nemotron-safety-guard-8b-v3
 
 jobs:
   ambient-healthcare-qa:
@@ -85,10 +87,12 @@ jobs:
         run: |
           set -euo pipefail
           cp apps/api/dot_env_example apps/api/.env
-          sed -i '/^NVIDIA_API_KEY=/d;/^OPENAI_BASE_URL=/d;/^RIVA_URI=/d' apps/api/.env
+          sed -i '/^NVIDIA_API_KEY=/d;/^OPENAI_BASE_URL=/d;/^RIVA_URI=/d;/^LLM_MODEL=/d' apps/api/.env
           {
+            echo
             printf 'NVIDIA_API_KEY=%s\n' "${NVIDIA_API_KEY}"
             echo 'OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1'
+            printf 'LLM_MODEL=%s\n' "${HOSTED_LLM_MODEL}"
             echo 'RIVA_URI=parakeet-nim:50051'
           } >> apps/api/.env
           cp apps/ui/.env.example apps/ui/.env
@@ -104,11 +108,21 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           set -euo pipefail
-          sed -i '/^NVIDIA_API_KEY=/d;/^NGC_API_KEY=/d' agent/vars.env
+          sed -i '/^NVIDIA_API_KEY=/d;/^NGC_API_KEY=/d;/^AGENT_LLM_MODEL=/d' agent/vars.env
           {
+            echo
+            printf 'AGENT_LLM_MODEL="%s"\n' "${HOSTED_LLM_MODEL}"
             printf 'NVIDIA_API_KEY="%s"\n' "${NVIDIA_API_KEY}"
             printf 'NGC_API_KEY="%s"\n' "${NGC_API_KEY}"
           } >> agent/vars.env
+          for cfg in agent/nmgr-config-store/patient-intake-nemoguard*/config.yml; do
+            sed -i "s#\"nvidia/llama-3.1-nemoguard-8b-content-safety\"#\"${HOSTED_CONTENT_SAFETY_MODEL}\"#" "${cfg}"
+          done
+          grep -q "${HOSTED_CONTENT_SAFETY_MODEL}" agent/nmgr-config-store/patient-intake-nemoguard/config.yml
+          if grep -rq 'nvidia/llama-3.1-nemoguard-8b-content-safety' agent/nmgr-config-store/; then
+            echo "::error::EOL content-safety model still configured"
+            exit 1
+          fi
           docker compose -f agent/docker-compose.yaml up --build -d app-server full-agent-ui
 
       - name: Deploy ambient patient voice interface (ace-controller)
@@ -121,6 +135,7 @@ jobs:
           env_file=ace-controller-voice-interface/ace_controller.env
           sed -i '/^NGC_API_KEY=/d;/^NVIDIA_API_KEY=/d' "${env_file}"
           {
+            echo
             printf 'NGC_API_KEY=%s\n' "${NGC_API_KEY}"
             printf 'NVIDIA_API_KEY=%s\n' "${NVIDIA_API_KEY}"
           } >> "${env_file}"
