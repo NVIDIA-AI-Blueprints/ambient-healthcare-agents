@@ -93,6 +93,8 @@ jobs:
           } >> apps/api/.env
           cp apps/ui/.env.example apps/ui/.env
           ./scripts/validate-env.sh
+          mkdir -p apps/api/uploads
+          chmod a+rwx apps/api/uploads
           docker compose -f infra/compose.dev.yml --profile riva-nim up --build -d parakeet-nim api ui
 
       - name: Deploy ambient patient agent (app-server, full-agent-ui)
@@ -141,7 +143,7 @@ jobs:
             done
             echo "${url} ready after $(( $(date +%s) - start ))s"
           }
-          wait_for http://localhost:9000/v1/health 1800
+          wait_for http://localhost:9000/v1/health/ready 1800
           wait_for http://localhost:8000/api/health/ 600
           wait_for http://localhost:5173/ 600
           wait_for http://localhost:7861/full-assistant 600
